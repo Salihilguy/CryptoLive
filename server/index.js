@@ -16,29 +16,40 @@ const io = new Server(server, {
     }
 });
 
-const binanceWs = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@trade');
+// Takip etmek istediğimiz coinlerin listesi
+const myCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT'];
+
+// Binance Tüm Piyasalar (Mini Ticker) kanalına bağlanıldı
+const binanceWs = new WebSocket('wss://stream.binance.com:9443/ws/!ticker@arr');
 
 binanceWs.on('open', () => {
-    console.log('✅ Binance Borsasına Bağlanıldı.');
+    console.log('Binance Ticker Kanalına Bağlanıldı.');
 });
 
 binanceWs.on('message', (data) => {
     // Gelen veri Buffer tipinde, yazıya ve JSON'a çevrildi
-    const tradeData = JSON.parse(data.toString());
-    
-    // tradeData.p = Price demek
-    const price = parseFloat(tradeData.p).toFixed(2); // Küsurat 2 hane yapıldı
+    const allCoins = JSON.parse(data.toString());
 
-    // Konsola yazılsın
-    console.log(`BTC Fiyatı: ${price} $`);
+    //Gelen coinler arasından filtreleme yapıldı
+    const filteredCoins = allCoins.filter(coin => myCoins.includes(coin.s));
+
+    if (filteredCoins.length > 0) {
+        const cleanData = filteredCoins.map(coin => ({
+            symbol: coin.s,            
+            price: parseFloat(coin.c), 
+            change: parseFloat(coin.P)
+        }));
 
     // Gelen bu fiyat Frontend'e de gidiyor
-    io.emit('priceUpdate', { symbol: 'BTC', price: price });
+    io.emit('tickerUpdate', cleanData);
+
+    console.log(cleanData);
+    }
 });
 
 // Birisi siteye girdiğinde bu çalışır
 io.on('connection', (socket) => {
-    console.log('Bir kullanıcı bağlandı! ID:', socket.id);
+    console.log('Bir kullanıcı bağlandı. ID:', socket.id);
 
     // Kullanıcı çıkarsa
     socket.on('disconnect', () => {
