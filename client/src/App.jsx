@@ -14,11 +14,8 @@ function App() {
   
   const markets = [
       { id: 'CRYPTO', label: 'Kripto Piyasası' },
-<<<<<<< Updated upstream
       { id: 'FAVORITES', label: 'Favorilerim' },
       { id: 'FOREX', label: 'Döviz / Forex' },
-=======
->>>>>>> Stashed changes
       { id: 'BIST', label: 'BIST 100' },
       { id: 'COMMODITY', label: 'Emtia' },
       { id: 'US_STOCK', label: 'ABD Borsası' }
