@@ -19,35 +19,63 @@ const io = new Server(server, {
     }
 });
 
-// Takip etmek istediğimiz coinlerin listesi
-const myCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT'];
+// Coinlerin Sabit Bilgileri
+const COIN_METADATA = {
+    'BTCUSDT': { name: 'Bitcoin', logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
+    'ETHUSDT': { name: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
+    'SOLUSDT': { name: 'Solana', logo: 'https://assets.coingecko.com/coins/images/4128/large/solana.png' },
+    'BNBUSDT': { name: 'BNB', logo: 'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png' },
+    'XRPUSDT': { name: 'XRP', logo: 'https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png' },
+    'DOGEUSDT': { name: 'Dogecoin', logo: 'https://assets.coingecko.com/coins/images/5/large/dogecoin.png' },
+    'ADAUSDT': { name: 'Cardano', logo: 'https://assets.coingecko.com/coins/images/975/large/cardano.png' },
+    'AVAXUSDT': { name: 'Avalanche', logo: 'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png' },
+    'TRXUSDT': { name: 'Tron', logo: 'https://assets.coingecko.com/coins/images/1094/large/tron-logo.png' },
+    'DOTUSDT': { name: 'Polkadot', logo: 'https://assets.coingecko.com/coins/images/12171/large/polkadot.png' },
+    'MATICUSDT': { name: 'Polygon', logo: 'https://assets.coingecko.com/coins/images/4713/large/matic-token-icon.png' },
+    'LTCUSDT': { name: 'Litecoin', logo: 'https://assets.coingecko.com/coins/images/2/large/litecoin.png' },
+    'LINKUSDT': { name: 'Chainlink', logo: 'https://assets.coingecko.com/coins/images/877/large/chainlink-new-logo.png' },
+    'SHIBUSDT': { name: 'Shiba Inu', logo: 'https://assets.coingecko.com/coins/images/11939/large/shiba.png' },
+    'ATOMUSDT': { name: 'Cosmos', logo: 'https://assets.coingecko.com/coins/images/1481/large/cosmos_hub.png' }
+};
 
-// Binance Tüm Piyasalar (Mini Ticker) kanalına bağlanıldı
-const binanceWs = new WebSocket('wss://stream.binance.com:9443/ws/!ticker@arr');
+// Sadece sembolleri Binance'e yollamak için bir liste çıkarıldı
+const myCoins = Object.keys(COIN_METADATA);
+
+// Binance kanalına bağlanıldı
+const binanceWs = new WebSocket('wss://stream.binance.com:443/ws/!ticker@arr');
 
 binanceWs.on('open', () => {
     console.log('Binance Ticker Kanalına Bağlanıldı.');
 });
 
+binanceWs.on('error', (err) => {
+    console.error('Binance Bağlantı Hatası:', err.message);
+});
+
 binanceWs.on('message', (data) => {
-    // Gelen veri Buffer tipinde, yazıya ve JSON'a çevrildi
-    const allCoins = JSON.parse(data.toString());
+    try {
+        const allCoins = JSON.parse(data.toString());
+        const filteredCoins = allCoins.filter(coin => myCoins.includes(coin.s));
 
-    //Gelen coinler arasından filtreleme yapıldı
-    const filteredCoins = allCoins.filter(coin => myCoins.includes(coin.s));
+        if (filteredCoins.length > 0) {
+            const cleanData = filteredCoins.map(coin => {
+                // METADATA'dan ek bilgileri çek (HİBRİT YAPI)
+                const info = COIN_METADATA[coin.s]; 
 
-    if (filteredCoins.length > 0) {
-        const cleanData = filteredCoins.map(coin => ({
-            symbol: coin.s,            
-            price: parseFloat(coin.c), 
-            change: parseFloat(coin.P)
-        }));
+                return {
+                    symbol: coin.s,
+                    name: info ? info.name : coin.s, 
+                    logo: info ? info.logo : '',    
+                    price: parseFloat(coin.c),
+                    change: parseFloat(coin.P)
+                };
+            });
 
-    // Gelen bu fiyat Frontend'e de gidiyor
-    io.emit('tickerUpdate', cleanData);
-
-    //console.log(cleanData);
-    }
+            io.emit('tickerUpdate', cleanData);
+        }
+    } catch (err) {
+        console.error("Veri işleme hatası:", err);
+    }  
 });
 
 // Birisi siteye girdiğinde bu çalışır
