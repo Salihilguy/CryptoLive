@@ -4,22 +4,17 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require("socket.io");
 const WebSocket = require('ws');
+const https = require('https'); 
+const YahooFinance = require('yahoo-finance2').default;
+const yf = new YahooFinance();
 
 const app = express();
 app.use(cors());
-
 app.use(express.json());
 
-// Socket.io Kurulumu (Canlı bağlantı için)
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*", 
-        methods: ["GET", "POST"]
-    }
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-// Coinlerin Sabit Bilgileri
 const COIN_METADATA = {
     'BTCUSDT': { name: 'Bitcoin', logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
     'ETHUSDT': { name: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
@@ -38,100 +33,186 @@ const COIN_METADATA = {
     'ATOMUSDT': { name: 'Cosmos', logo: 'https://assets.coingecko.com/coins/images/1481/large/cosmos_hub.png' }
 };
 
-// Sadece sembolleri Binance'e yollamak için bir liste çıkarıldı
 const myCoins = Object.keys(COIN_METADATA);
+const BASE_PRICES = { 'BTCUSDT': 96500, 'ETHUSDT': 3650, 'SOLUSDT': 240, 'BNBUSDT': 720, 'XRPUSDT': 2.45, 'DOGEUSDT': 0.065, 'ADAUSDT': 1.25, 'AVAXUSDT': 18, 'TRXUSDT': 0.07, 'DOTUSDT': 7.5, 'MATICUSDT': 1.1, 'LTCUSDT': 65, 'LINKUSDT': 7.8, 'SHIBUSDT': 0.000008, 'ATOMUSDT': 12 };
 
-// Binance kanalına bağlanıldı
-const binanceWs = new WebSocket('wss://stream.binance.com:443/ws/!ticker@arr');
 
-binanceWs.on('open', () => {
-    console.log('Binance Ticker Kanalına Bağlanıldı.');
-});
+const MARKET_ASSETS = [
+    // BIST 100
+    { symbol: 'XU100.IS', name: 'BIST 100', type: 'BIST', logo: 'https://logo.clearbit.com/borsaistanbul.com' },
+    { symbol: 'THYAO.IS', name: 'Türk Hava Yolları', type: 'BIST', logo: 'https://logo.clearbit.com/turkishairlines.com' },
+    { symbol: 'PGSUS.IS', name: 'Pegasus', type: 'BIST', logo: 'https://logo.clearbit.com/flypgs.com' },
+    { symbol: 'GARAN.IS', name: 'Garanti BBVA', type: 'BIST', logo: 'https://logo.clearbit.com/garantibbva.com.tr' },
+    { symbol: 'AKBNK.IS', name: 'Akbank', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=akbank.com&sz=128' },
+    { symbol: 'ISCTR.IS', name: 'İş Bankası', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=isbank.com.tr&sz=128' },
+    { symbol: 'YKBNK.IS', name: 'Yapı Kredi', type: 'BIST', logo: 'https://logo.clearbit.com/yapikredi.com.tr' },
+    { symbol: 'TUPRS.IS', name: 'Tüpraş', type: 'BIST', logo: 'https://logo.clearbit.com/tupras.com.tr' },
+    { symbol: 'ASELS.IS', name: 'Aselsan', type: 'BIST', logo: 'https://logo.clearbit.com/aselsan.com.tr' },
+    { symbol: 'KCHOL.IS', name: 'Koç Holding', type: 'BIST', logo: 'https://logo.clearbit.com/koc.com.tr' },
+    { symbol: 'SAHOL.IS', name: 'Sabancı Holding', type: 'BIST', logo: 'https://logo.clearbit.com/sabanci.com' },
+    { symbol: 'EREGL.IS', name: 'Ereğli Demir Çelik', type: 'BIST', logo: 'https://logo.clearbit.com/erdemir.com.tr' },
+    { symbol: 'BIMAS.IS', name: 'BİM Mağazalar', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=bim.com.tr&sz=128' },
+    { symbol: 'SASA.IS', name: 'Sasa Polyester', type: 'BIST', logo: 'https://logo.clearbit.com/sasa.com.tr' },
+    { symbol: 'FROTO.IS', name: 'Ford Otosan', type: 'BIST', logo: 'https://logo.clearbit.com/fordotosan.com.tr' },
 
-binanceWs.on('error', (err) => {
-    console.error('Binance Bağlantı Hatası:', err.message);
-});
 
-binanceWs.on('message', (data) => {
+    // DÖVİZ & FOREX
+    { symbol: 'TRY=X', name: 'USD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/us.png' }, 
+    { symbol: 'EURTRY=X', name: 'EUR / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/eu.png' },
+    { symbol: 'GBPTRY=X', name: 'GBP / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/gb.png' }, 
+    { symbol: 'EURUSD=X', name: 'EUR / USD', type: 'FOREX', logo: 'https://flagcdn.com/w80/eu.png' }, 
+    { symbol: 'JPYTRY=X', name: 'JPY / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/jp.png' },
+    { symbol: 'CHFTRY=X', name: 'CHF / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/ch.png' }, 
+    { symbol: 'CADTRY=X', name: 'CAD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/ca.png' }, 
+    { symbol: 'DX-Y.NYB', name: 'Dolar Endeksi (DXY)', type: 'FOREX', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/United-states_flag_icon_round.svg/1024px-United-states_flag_icon_round.svg.png' },
+
+    // EMTİA
+    { symbol: 'GC=F', name: 'Altın (Ons)', type: 'COMMODITY', logo: 'https://img.icons8.com/fluency/96/gold-bars.png' },
+    { symbol: 'CL=F', name: 'Ham Petrol', type: 'COMMODITY', logo: 'https://www.google.com/s2/favicons?domain=oilprice.com&sz=128' },
+    { symbol: 'BZ=F', name: 'Brent Petrol', type: 'COMMODITY', logo: 'https://cdn-icons-png.flaticon.com/512/2933/2933890.png' },  
+    { symbol: 'SI=F', name: 'Gümüş', type: 'COMMODITY', logo: 'https://img.icons8.com/fluency/96/silver-bars.png' },
+    { symbol: 'HG=F', name: 'Bakır', type: 'COMMODITY', logo: 'https://img.icons8.com/fluency/96/copper-bars.png' },
+    { symbol: 'NG=F', name: 'Doğal Gaz', type: 'COMMODITY', logo: 'https://img.icons8.com/color/96/gas-industry.png' },
+
+    // ABD BORSASI
+    { symbol: 'AAPL', name: 'Apple', type: 'US_STOCK', logo: 'https://logo.clearbit.com/apple.com' },
+    { symbol: 'TSLA', name: 'Tesla', type: 'US_STOCK', logo: 'https://logo.clearbit.com/tesla.com' },
+    { symbol: 'NVDA', name: 'NVIDIA', type: 'US_STOCK', logo: 'https://logo.clearbit.com/nvidia.com' },
+    { symbol: 'MSFT', name: 'Microsoft', type: 'US_STOCK', logo: 'https://logo.clearbit.com/microsoft.com' },
+    { symbol: 'AMZN', name: 'Amazon', type: 'US_STOCK', logo: 'https://logo.clearbit.com/amazon.com' },
+    { symbol: 'GOOG', name: 'Google', type: 'US_STOCK', logo: 'https://logo.clearbit.com/google.com' },
+    { symbol: 'META', name: 'Meta (Facebook)', type: 'US_STOCK', logo: 'https://logo.clearbit.com/meta.com' },
+    { symbol: 'NFLX', name: 'Netflix', type: 'US_STOCK', logo: 'https://logo.clearbit.com/netflix.com' }
+];
+
+async function fetchGlobalMarkets() {
     try {
-        const allCoins = JSON.parse(data.toString());
-        const filteredCoins = allCoins.filter(coin => myCoins.includes(coin.s));
-
-        if (filteredCoins.length > 0) {
-            const cleanData = filteredCoins.map(coin => {
-                // METADATA'dan ek bilgileri çek (HİBRİT YAPI)
-                const info = COIN_METADATA[coin.s]; 
-
+        const promises = MARKET_ASSETS.map(async (asset) => {
+            try {
+                const result = await yf.quote(asset.symbol);
                 return {
-                    symbol: coin.s,
-                    name: info ? info.name : coin.s, 
-                    logo: info ? info.logo : '',    
-                    price: parseFloat(coin.c),
-                    change: parseFloat(coin.P)
+                    symbol: asset.symbol,
+                    name: asset.name,
+                    logo: asset.logo,
+                    type: asset.type,
+                    price: result.regularMarketPrice ?? null,
+                    change: result.regularMarketChangePercent ?? 0
                 };
-            });
+            } catch (err) {
+                console.error(`${asset.symbol} verisi alınamadı:`, err.message);
+                return null;
+            }
+        });
 
-            io.emit('tickerUpdate', cleanData);
+        const results = (await Promise.all(promises)).filter(Boolean);
+
+        if (results.length > 0) {
+            io.emit('marketUpdate', results);
+        } else {
+            console.warn("Hiçbir piyasa verisi alınamadı.");
         }
+
     } catch (err) {
-        console.error("Veri işleme hatası:", err);
-    }  
-});
+        console.error("Yahoo Finance v3 global fetch hatası:", err.message);
+    }
+}
 
-// Birisi siteye girdiğinde bu çalışır
-io.on('connection', (socket) => {
-    console.log('Bir kullanıcı bağlandı. ID:', socket.id);
+setInterval(fetchGlobalMarkets, 5000);
+fetchGlobalMarkets();
 
-    // Kullanıcı çıkarsa
-    socket.on('disconnect', () => {
-        console.log('Kullanıcı ayrıldı:', socket.id);
+function startFakeTickerService() {
+    setInterval(() => {
+        const fakeData = myCoins.map(symbol => {
+            const info = COIN_METADATA[symbol];
+            let currentPrice = BASE_PRICES[symbol] || 100;
+            const changePercent = (Math.random() - 0.5) * 0.01; 
+            const newPrice = currentPrice * (1 + changePercent);
+            BASE_PRICES[symbol] = newPrice;
+            return { symbol, name: info.name, logo: info.logo, price: newPrice, change: changePercent * 100 };
+        });
+        io.emit('tickerUpdate', fakeData);
+    }, 1000); 
+}
+
+let isBinanceWorking = false;
+try {
+    const binanceWs = new WebSocket('wss://stream.binance.com:443/ws/!ticker@arr');
+    binanceWs.on('open', () => { isBinanceWorking = true; console.log('Binance Bağlandı'); });
+    binanceWs.on('error', (err) => {console.error("Binance WS Hatası:", err);});
+    binanceWs.on('message', (data) => {
+        try {
+            const allCoins = JSON.parse(data.toString());
+            const filteredCoins = allCoins.filter(coin => myCoins.includes(coin.s));
+            if (filteredCoins.length > 0) {
+                isBinanceWorking = true;
+                const cleanData = filteredCoins.map(coin => {
+                    const info = COIN_METADATA[coin.s];
+                    if(coin.c) BASE_PRICES[coin.s] = parseFloat(coin.c);
+
+                    return { symbol: coin.s, 
+                        name: info ? info.name : coin.s, 
+                        logo: info ? info.logo : '', 
+                        price: parseFloat(coin.c), 
+                        change: parseFloat(coin.P) 
+                    };
+                });
+                io.emit('tickerUpdate', cleanData);
+            }
+        } catch (e) { console.error("Binance mesaj işleme hatası:", e);}
     });
-});
+} catch (e) {console.error("Binance bağlanırken kritik hata:", e);}
+
+setTimeout(() => { if (!isBinanceWorking) startFakeTickerService(); }, 5000);
 
 app.post('/api/notification', (req, res) => {
-
     const { title, message, type } = req.body;
-
-    if (!title || !message) {
-        return res.status(400).send({ error: "Başlık ve mesaj zorunludur!" });
-    }
-
-    console.log(`YENİ BİLDİRİM: ${title} - ${message}`);
-
-    io.emit('notification', {
-        title: title,
-        message: message,
-        type: type || 'info', 
-        time: new Date().toLocaleTimeString()
-    });
-
-    res.send({ success: true, status: "Bildirim tüm kullanıcılara iletildi." });
+    console.log(`BİLDİRİM: ${title}`);
+    io.emit('notification', { title, message, type: type || 'info', time: new Date().toLocaleTimeString() });
+    res.send({ success: true });
 });
 
-app.get('/api/history', async (req, res) => {
-    try {
-        const symbol = req.query.symbol || 'BTCUSDT';
-        const interval = '1h'; 
-        const limit = 24;      // Son 24 saati getir
+function generateMockHistory(symbol) {
+    const data = [];
+    let close = BASE_PRICES[symbol] || 100;
+    
+    for (let i = 24; i > 0; i--) {
+        const date = new Date();
+        date.setHours(date.getHours() - i);
+        
+        const volatility = close * 0.02; 
+        const open = close + (Math.random() - 0.5) * volatility;
+        const tempClose = open + (Math.random() - 0.5) * volatility;
+        const high = Math.max(open, tempClose) + Math.random() * volatility * 0.5;
+        const low = Math.min(open, tempClose) - Math.random() * volatility * 0.5;
+        
+        close = tempClose; 
 
-        const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-        const response = await axios.get(url);
+        data.push({
+            x: date.getTime(), 
+            y: [parseFloat(open.toFixed(4)), parseFloat(high.toFixed(4)), parseFloat(low.toFixed(4)), parseFloat(close.toFixed(4))] 
+        });
+    }
+    return data;
+}
+
+app.get('/api/history', async (req, res) => {
+    const symbol = req.query.symbol || 'BTCUSDT';
+    try {
+        const agent = new https.Agent({ rejectUnauthorized: false, keepAlive: true, family: 4 });
+        const url = `https://api3.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=24`;
+        const response = await axios.get(url, { httpsAgent: agent, timeout: 4000 });
 
         const chartData = response.data.map(item => ({
-            time: new Date(item[0]).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), // Örn: 14:00
-            price: parseFloat(item[4]) // Kapanış Fiyatı
+            x: item[0], 
+            y: [parseFloat(item[1]), parseFloat(item[2]), parseFloat(item[3]), parseFloat(item[4])] 
         }));
 
         res.send(chartData);
-
     } catch (error) {
-        console.error("Grafik verisi çekilemedi:", error.message);
-        res.status(500).send({ error: "Veri çekilemedi" });
+        console.log(`Grafik Hatası. Mock veri dönüyor.`);
+        res.send(generateMockHistory(symbol));
     }
 });
 
-// Sunucuyu Başlatır
 const PORT = 3001;
-server.listen(PORT, () => {
-    console.log(`Sunucu aktif. http://localhost:${PORT} adresinde çalışıyor.`);
-});
+server.listen(PORT, () => { console.log(`Sunucu aktif: http://localhost:${PORT}`); });
