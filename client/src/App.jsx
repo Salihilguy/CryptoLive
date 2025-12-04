@@ -59,6 +59,43 @@ function App() {
       return () => clearInterval(interval);
   }, []);
 
+
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area } from 'recharts';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+// --- YENİ EKLENENLER ---
+import Admin from './pages/Admin'; // Admin sayfasını çağırıyoruz
+import { getHistory } from './services/api'; // Servisimizi çağırıyoruz
+
+const socket = io.connect("http://localhost:3001");
+
+function App() {
+  // --- STATE ---
+  const [coins, setCoins] = useState([]);
+  const [activeTab, setActiveTab] = useState('CRYPTO');
+  const [selectedCoin, setSelectedCoin] = useState('BTCUSDT');
+  const [chartData, setChartData] = useState([]);
+  
+  // Admin Panelini Göster/Gizle
+  const [showAdmin, setShowAdmin] = useState(false);
+  
+  const prevCoinsRef = useRef({});
+
+  const markets = [
+      { id: 'CRYPTO', label: 'Kripto Piyasası 🪙' },
+      { id: 'BIST', label: 'BIST 100 🇹🇷' },
+      { id: 'COMMODITY', label: 'Emtia 🛢' },
+      { id: 'US_STOCK', label: 'ABD Borsası 🇺🇸' }
+  ];
+
+  const sortOrder = [
+    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+    'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'TRXUSDT', 'DOTUSDT',
+    'MATICUSDT', 'LTCUSDT', 'LINKUSDT', 'SHIBUSDT', 'ATOMUSDT'
+  ];
+
+  // --- 1. SOCKET & BİLDİRİM ---
   useEffect(() => {
     socket.on("tickerUpdate", (data) => {
       setCoins((prevCoins) => {
@@ -69,6 +106,14 @@ function App() {
             if (prevPrice) {
                 if (newCoin.price > prevPrice) priceClass = 'flash-green';
                 else if (newCoin.price < prevPrice) priceClass = 'flash-red';
+            }
+            prevCoinsRef.current[newCoin.symbol] = newCoin.price;
+
+            const index = updatedCoins.findIndex(c => c.symbol === newCoin.symbol);
+            if (index !== -1) {
+                updatedCoins[index] = { ...newCoin, priceClass };
+            } else {
+                updatedCoins.push({ ...newCoin, priceClass });
             }
             prevCoinsRef.current[newCoin.symbol] = newCoin.price;
             const index = updatedCoins.findIndex(c => c.symbol === newCoin.symbol);
@@ -136,6 +181,43 @@ function App() {
     try { await axios.post(`${API_URL}/notification`, { title: notifTitle, message: notifMsg }); setNotifTitle(""); setNotifMsg(""); setShowAdmin(false); toast.success("Gonderildi!", { theme: "dark" }); } catch (e) { alert("Hata"); }
   };
 
+    socket.on('notification', (notif) => {
+        toast.info(
+            <div>
+                <strong style={{color:'#00d2ff'}}>{notif.title}</strong>
+                <div>{notif.message}</div>
+                <small style={{fontSize:'0.7em', color:'#ccc'}}>{notif.time}</small>
+            </div>, 
+            { position: "top-right", theme: "dark", autoClose: 5000 }
+        );
+    });
+
+    return () => {
+        socket.off('tickerUpdate');
+        socket.off('notification');
+    };
+  }, []);
+
+  // --- 2. GRAFİK VERİSİ (Servisten Çekiyoruz) ---
+  useEffect(() => {
+    const fetchHistory = async () => {
+        try {
+            if (activeTab === 'CRYPTO') {
+                const data = await getHistory(selectedCoin);
+                setChartData(data);
+            } else {
+                setChartData([]);
+            }
+        } catch (err) { console.error(err); }
+    };
+    fetchHistory();
+  }, [selectedCoin, activeTab]);
+
+  const sortedCoins = [...coins].sort((a, b) => {
+    return sortOrder.indexOf(a.symbol) - sortOrder.indexOf(b.symbol);
+  });
+
+  // --- RENDER ---
   return (
     <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', padding: '0', boxSizing: 'border-box', overflowX:'hidden' }}>
       <ToastContainer />
@@ -255,6 +337,135 @@ function App() {
                 </div>
             </div>
         </div>
+    <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', padding: '20px', boxSizing: 'border-box' }}>
+      <ToastContainer />
+      
+      {showAdmin && <Admin onClose={() => setShowAdmin(false)} />}
+
+      <style>{`
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e1e2e; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        @keyframes flashGreen { 0% { color: #00ff88; text-shadow: 0 0 10px #00ff88; transform: scale(1.05); } 100% { color: white; transform: scale(1); } }
+        @keyframes flashRed { 0% { color: #ff4d4d; text-shadow: 0 0 10px #ff4d4d; transform: scale(1.05); } 100% { color: white; transform: scale(1); } }
+        .flash-green { animation: flashGreen 0.8s ease-out; }
+        .flash-red { animation: flashRed 0.8s ease-out; }
+        .nav-btn { background: transparent; border: 1px solid #444; color: #888; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; font-weight: 600; }
+        .nav-btn:hover { background: #2b2b3b; color: white; border-color: #666; }
+        .nav-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; box-shadow: 0 0 15px rgba(0, 210, 255, 0.4); }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{ width: '100%', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px', padding:'0 10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px'}}>
+             <h1 style={{ color: '#00d2ff', margin: 0, fontSize:'2rem', fontWeight:'800' }}>CryptoLive</h1>
+          </div>
+          <button onClick={() => setShowAdmin(true)} style={{ background: 'linear-gradient(45deg, #00d2ff, #007aff)', border: 'none', padding: '10px 25px', borderRadius: '30px', fontWeight: 'bold', cursor:'pointer', color:'white', boxShadow:'0 4px 15px rgba(0, 210, 255, 0.3)' }}>
+              Admin Paneli
+          </button>
+      </div>
+
+      {/* MENÜLER */}
+      <div style={{ width: '100%', display: 'flex', gap: '15px', padding: '0 10px', marginBottom: '25px', overflowX: 'auto' }}>
+          {markets.map(market => (
+              <button 
+                  key={market.id} 
+                  className={`nav-btn ${activeTab === market.id ? 'active' : ''}`} 
+                  onClick={() => setActiveTab(market.id)}
+              >
+                  {market.label}
+              </button>
+          ))}
+      </div>
+
+      {/* ANA İÇERİK (Tablo ve Grafik) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '20px', width: '100%', height: 'calc(100vh - 180px)' }}>
+          
+          {/* SOL: TABLO */}
+          <div style={{ background: '#1e1e2e', borderRadius: '20px', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 10px 30px rgba(0,0,0,0.3)', border:'1px solid #333' }}>
+              <div style={{ padding:'20px', borderBottom:'1px solid #333', background:'#252530' }}>
+                 <h3 style={{margin:0}}>{markets.find(m => m.id === activeTab)?.label}</h3>
+              </div>
+              
+              <div style={{ overflowY:'auto', flex:1 }}>
+                  {activeTab === 'CRYPTO' ? (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
+                              <tr style={{ color: '#888', textAlign: 'left', fontSize:'0.9rem' }}>
+                                  <th style={{ padding: '15px 20px' }}>Coin</th>
+                                  <th style={{ padding: '15px 20px', textAlign:'right' }}>Fiyat</th>
+                                  <th style={{ padding: '15px 20px', textAlign:'right' }}>Değişim</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              {sortedCoins.map((coin) => (
+                                  <tr 
+                                      key={coin.symbol} 
+                                      onClick={() => setSelectedCoin(coin.symbol)} 
+                                      style={{ borderBottom: '1px solid #2a2a35', cursor:'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.08)' : 'transparent', transition: 'background 0.2s' }}
+                                  >
+                                      <td style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                          <img src={coin.logo} alt={coin.name} width="32" height="32" style={{ borderRadius: '50%' }} />
+                                          <div>
+                                              <div style={{ fontWeight: 'bold', fontSize:'1rem' }}>{coin.name}</div>
+                                              <div style={{ fontSize: '0.75rem', color: '#666' }}>{coin.symbol}</div>
+                                          </div>
+                                      </td>
+                                      
+                                      <td className={coin.priceClass} style={{ textAlign:'right', fontWeight: '600', fontFamily:'monospace', fontSize:'1.1rem', paddingRight:'20px' }}>
+                                          ${coin.price?.toFixed(2)}
+                                      </td>
+                                      
+                                      <td style={{ textAlign:'right', fontWeight: 'bold', color: parseFloat(coin.change) > 0 ? '#00ff88' : '#ff4d4d', paddingRight:'20px' }}>
+                                          %{coin.change ? coin.change.toFixed(2) : "0.00"}
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  ) : (
+                      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                          <h3>🚧 Yapım Aşamasında</h3>
+                          <p>{activeTab} verileri yakında eklenecek.</p>
+                      </div>
+                  )}
+              </div>
+          </div>
+
+          {/* SAĞ: GRAFİK */}
+          <div style={{ background: '#1e1e2e', borderRadius: '20px', padding: '25px', display:'flex', flexDirection:'column', boxShadow:'0 10px 30px rgba(0,0,0,0.3)', border:'1px solid #333', position:'relative' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize:'1.8rem' }}>{activeTab === 'CRYPTO' ? selectedCoin : 'Veri Yok'}</h2>
+                    <span style={{ color:'#888' }}>Grafik Analizi</span>
+                  </div>
+              </div>
+
+              <div style={{ flex: 1, width: '100%', minHeight: '0' }}> 
+                {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData}>
+                            <defs>
+                                <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#00d2ff" stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor="#00d2ff" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                            <XAxis dataKey="time" stroke="#666" tick={{fontSize: 12}} minTickGap={50} />
+                            <YAxis domain={['auto', 'auto']} stroke="#666" tick={{fontSize: 12}} orientation="right" />
+                            <Tooltip contentStyle={{ backgroundColor: '#252530', borderColor: '#444', borderRadius:'10px', boxShadow:'0 5px 15px black' }} itemStyle={{ color: '#00d2ff' }} />
+                            <Area type="monotone" dataKey="price" stroke="#00d2ff" strokeWidth={3} fillOpacity={1} fill="url(#colorPrice)" />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'10px' }}>
+                        Bu piyasa için henüz grafik verisi yok.
+                    </div>
+                )}
+              </div>
+          </div>
+
       </div>
     </div>
   );
