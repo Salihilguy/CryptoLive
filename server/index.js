@@ -36,12 +36,13 @@ const COIN_METADATA = {
 const myCoins = Object.keys(COIN_METADATA);
 const BASE_PRICES = { 'BTCUSDT': 96500, 'ETHUSDT': 3650, 'SOLUSDT': 240, 'BNBUSDT': 720, 'XRPUSDT': 2.45, 'DOGEUSDT': 0.065, 'ADAUSDT': 1.25, 'AVAXUSDT': 18, 'TRXUSDT': 0.07, 'DOTUSDT': 7.5, 'MATICUSDT': 1.1, 'LTCUSDT': 65, 'LINKUSDT': 7.8, 'SHIBUSDT': 0.000008, 'ATOMUSDT': 12 };
 
-
 const MARKET_ASSETS = [
     // BIST 100
     { symbol: 'XU100.IS', name: 'BIST 100', type: 'BIST', logo: 'https://logo.clearbit.com/borsaistanbul.com' },
     { symbol: 'THYAO.IS', name: 'Türk Hava Yolları', type: 'BIST', logo: 'https://logo.clearbit.com/turkishairlines.com' },
     { symbol: 'PGSUS.IS', name: 'Pegasus', type: 'BIST', logo: 'https://logo.clearbit.com/flypgs.com' },
+    { symbol: 'TCELL.IS', name: 'Turkcell', type: 'BIST', logo: 'https://logo.clearbit.com/turkcell.com.tr' },
+    { symbol: 'TTKOM.IS', name: 'Türk Telekom', type: 'BIST', logo: 'https://logo.clearbit.com/turktelekom.com.tr' },
     { symbol: 'GARAN.IS', name: 'Garanti BBVA', type: 'BIST', logo: 'https://logo.clearbit.com/garantibbva.com.tr' },
     { symbol: 'AKBNK.IS', name: 'Akbank', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=akbank.com&sz=128' },
     { symbol: 'ISCTR.IS', name: 'İş Bankası', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=isbank.com.tr&sz=128' },
@@ -55,16 +56,21 @@ const MARKET_ASSETS = [
     { symbol: 'SASA.IS', name: 'Sasa Polyester', type: 'BIST', logo: 'https://logo.clearbit.com/sasa.com.tr' },
     { symbol: 'FROTO.IS', name: 'Ford Otosan', type: 'BIST', logo: 'https://logo.clearbit.com/fordotosan.com.tr' },
 
-
     // DÖVİZ & FOREX
-    { symbol: 'TRY=X', name: 'USD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/us.png' }, 
+    { symbol: 'USDTRY=X', name: 'USD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/us.png' }, 
     { symbol: 'EURTRY=X', name: 'EUR / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/eu.png' },
     { symbol: 'GBPTRY=X', name: 'GBP / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/gb.png' }, 
     { symbol: 'EURUSD=X', name: 'EUR / USD', type: 'FOREX', logo: 'https://flagcdn.com/w80/eu.png' }, 
     { symbol: 'JPYTRY=X', name: 'JPY / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/jp.png' },
     { symbol: 'CHFTRY=X', name: 'CHF / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/ch.png' }, 
     { symbol: 'CADTRY=X', name: 'CAD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/ca.png' }, 
+    { symbol: 'AUDTRY=X', name: 'AUD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/au.png' }, 
+    { symbol: 'CNYTRY=X', name: 'CNY / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/cn.png' }, 
+    { symbol: 'RUBTRY=X', name: 'RUB / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/ru.png' }, 
     { symbol: 'DX-Y.NYB', name: 'Dolar Endeksi (DXY)', type: 'FOREX', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/United-states_flag_icon_round.svg/1024px-United-states_flag_icon_round.svg.png' },
+
+    { symbol: 'CNY=X', name: 'USD/CNY', type: 'HIDDEN' }, 
+    { symbol: 'RUB=X', name: 'USD/RUB', type: 'HIDDEN' },
 
     // EMTİA
     { symbol: 'GC=F', name: 'Altın (Ons)', type: 'COMMODITY', logo: 'https://img.icons8.com/fluency/96/gold-bars.png' },
@@ -85,36 +91,113 @@ const MARKET_ASSETS = [
     { symbol: 'NFLX', name: 'Netflix', type: 'US_STOCK', logo: 'https://logo.clearbit.com/netflix.com' }
 ];
 
+const tradingViewMap = {
+  'TCELL.IS': 'TCELL',
+  'TTKOM.IS': 'TTKOM',
+
+  'GBPTRY=X': 'FX:GBPTRY',
+  'JPYTRY=X': 'FX:JPYTRY',
+  'EURTRY=X': 'FX:EURTRY',
+  'USDTRY=X': 'FX:USDTRY',
+  'EURUSD=X': 'FX:EURUSD',
+  'CHFTRY=X': 'FX:CHFTRY',
+  'CADTRY=X': 'FX:CADTRY',
+
+  'GC=F': 'COMEX:GC1!', 
+  'CL=F': 'NYMEX:CL1!',
+
+  'BTCUSDT': 'BINANCE:BTCUSDT',
+  'ETHUSDT': 'BINANCE:ETHUSDT'
+};
+
+function convertToTradingView(symbol) {
+  if (!symbol || typeof symbol !== 'string') return symbol;
+
+  if (tradingViewMap[symbol]) return tradingViewMap[symbol];
+
+  if (symbol.endsWith('=X')) {
+    const core = symbol.replace('=X', '');
+    return `FX:${core}`;
+  }
+
+  if (symbol === 'TRY=X') {
+    return 'FX:USDTRY';
+  }
+
+  if (symbol.includes(':')) return symbol;
+
+  return symbol;
+}
+
 async function fetchGlobalMarkets() {
     try {
         const promises = MARKET_ASSETS.map(async (asset) => {
             try {
                 const result = await yf.quote(asset.symbol);
+                const price = result?.regularMarketPrice ?? result?.price ?? null;
+                const change = result?.regularMarketChangePercent ?? result?.regularMarketChange ?? 0;
+                const tradingViewSymbol = convertToTradingView(asset.symbol);
+
                 return {
                     symbol: asset.symbol,
+                    tradingViewSymbol,
                     name: asset.name,
                     logo: asset.logo,
                     type: asset.type,
-                    price: result.regularMarketPrice ?? null,
-                    change: result.regularMarketChangePercent ?? 0
+                    price,
+                    change
                 };
             } catch (err) {
-                console.error(`${asset.symbol} verisi alınamadı:`, err.message);
+                console.error(`${asset.symbol} verisi alınamadı:`, err && err.message ? err.message : err);
                 return null;
             }
         });
 
-        const results = (await Promise.all(promises)).filter(Boolean);
+        const rawResults = await Promise.all(promises);
+        
+        const usdTryItem = rawResults.find(d => d.symbol === 'USDTRY=X') || rawResults.find(d => d.symbol === 'TRY=X');
+        const usdTryPrice = usdTryItem ? usdTryItem.price : 34.50;
 
-        if (results.length > 0) {
-            io.emit('marketUpdate', results);
-        } else {
-            console.warn("Hiçbir piyasa verisi alınamadı.");
+        const usdCnyItem = rawResults.find(d => d.symbol === 'CNY=X');
+        const usdCnyPrice = usdCnyItem ? usdCnyItem.price : 7.25;
+
+        const usdRubItem = rawResults.find(d => d.symbol === 'RUB=X');
+        const usdRubPrice = usdRubItem ? usdRubItem.price : 95.0;
+
+        const onsGold = rawResults.find(d => d.symbol === 'GC=F')?.price;
+        const onsSilver = rawResults.find(d => d.symbol === 'SI=F')?.price;
+
+        let finalResults = rawResults.map(item => {
+            if (item.type === 'HIDDEN') return null;
+
+            if (item.symbol === 'CNYTRY=X' && (!item.price || item.price < 0.1)) {
+                item.price = usdTryPrice / usdCnyPrice;
+            }
+            if (item.symbol === 'RUBTRY=X' && (!item.price || item.price < 0.01)) {
+                item.price = usdTryPrice / usdRubPrice;
+            }
+            
+            return item;
+        }).filter(Boolean);
+
+   if (usdTryPrice && onsGold) {
+            const gramAltin = (onsGold * usdTryPrice) / 31.1035;
+            finalResults.push({ symbol: 'GRAM-ALTIN', name: 'Gram Altın', type: 'COMMODITY', price: gramAltin, change: 0, logo: 'https://img.icons8.com/fluency/96/gold-bars.png', tradingViewSymbol: 'FX:XAUTRYG' });
+            finalResults.push({ symbol: 'CEYREK-ALTIN', name: 'Çeyrek Altın', type: 'COMMODITY', price: gramAltin * 1.63, change: 0, logo: 'https://img.icons8.com/fluency/96/coin-wallet.png', tradingViewSymbol: 'FX:XAUTRYG' });
+            finalResults.push({ symbol: 'TAM-ALTIN', name: 'Tam Altın', type: 'COMMODITY', price: gramAltin * 6.52, change: 0, logo: 'https://img.icons8.com/fluency/96/treasure-chest.png', tradingViewSymbol: 'FX:XAUTRYG' });
+        }
+        if (usdTryPrice && onsSilver) {
+            const gramGumus = (onsSilver * usdTryPrice) / 31.1035;
+            finalResults.push({ symbol: 'GRAM-GUMUS', name: 'Gram Gümüş', type: 'COMMODITY', price: gramGumus, change: 0, logo: 'https://img.icons8.com/fluency/96/silver-bars.png', tradingViewSymbol: 'FX:XAGTRY' });
         }
 
-    } catch (err) {
-        console.error("Yahoo Finance v3 global fetch hatası:", err.message);
-    }
+        if (finalResults.length > 0) {
+            io.emit('marketUpdate', finalResults);
+        }
+
+        } catch (err) {
+            console.error("Fetch Hatası:", err.message);
+        }
 }
 
 setInterval(fetchGlobalMarkets, 5000);
