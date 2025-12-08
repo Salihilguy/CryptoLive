@@ -1,157 +1,205 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import TradingViewWidget from './TradingViewWidget';
 
 const socket = io.connect("http://localhost:3001");
 const API_URL = "http://localhost:3001/api";
 
+const formatMarketCap = (value, currencySymbol) => {
+    if (!value) return '-';
+    let val = parseFloat(value);
+    if (val >= 1e9) return `${currencySymbol}${(val / 1e9).toFixed(2)}B`; 
+    if (val >= 1e6) return `${currencySymbol}${(val / 1e6).toFixed(2)}M`; 
+    return `${currencySymbol}${val.toFixed(0)}`;
+};
+
+const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'right', isChange = false, width = 'auto', fontSize='0.95rem' }) => {
+    const [flashClass, setFlashClass] = useState('');
+    const prevValueRef = useRef(value);
+
+    useEffect(() => {
+        const currentVal = parseFloat(value);
+        const prevVal = parseFloat(prevValueRef.current);
+
+        if (!isNaN(currentVal) && !isNaN(prevVal) && prevVal !== null && currentVal !== prevVal) {
+            if (currentVal > prevVal) setFlashClass('flash-green-pro');
+            else if (currentVal < prevVal) setFlashClass('flash-red-pro');
+            
+            const timer = setTimeout(() => setFlashClass(''), 500);
+            return () => clearTimeout(timer);
+        }
+        prevValueRef.current = value;
+    }, [value]);
+
+    let textColor = '#888888'; 
+    if (isChange) {
+        const val = parseFloat(value);
+        if (val > 0) textColor = '#00ff88';      
+        else if (val < 0) textColor = '#ff4d4d'; 
+    } else {
+        textColor = '#e0e0e0'; 
+    }
+
+    const displayValue = (value === null || value === undefined) 
+        ? '-' 
+        : (typeof value === 'number' ? value.toFixed(2) : value);
+
+    return (
+        <td className={`flash-cell-pro ${flashClass}`} style={{ textAlign: align, color: flashClass ? 'inherit' : textColor, width: width, minWidth: width, maxWidth: width, fontSize: fontSize }}>
+            {displayValue !== '-' ? prefix : ''}{displayValue}{displayValue !== '-' ? suffix : ''}
+        </td>
+    );
+};
+
 function App() {
   const [coins, setCoins] = useState([]);
   const [activeTab, setActiveTab] = useState('CRYPTO');
-  
+  const [currentTime, setCurrentTime] = useState(new Date());
+
   const markets = [
       { id: 'CRYPTO', label: 'Kripto Piyasası' },
-      { id: 'FAVORITES', label: 'Favorilerim' },
-      { id: 'FOREX', label: 'Döviz / Forex' },
       { id: 'BIST', label: 'BIST 100' },
+      { id: 'FOREX', label: 'Döviz' },
       { id: 'COMMODITY', label: 'Emtia' },
-      { id: 'US_STOCK', label: 'ABD Borsası' }
+      { id: 'US_STOCK', label: 'ABD Borsası' },
+      { id: 'FAVORITES', label: 'Favorilerim' }
   ];
-
-  const [globalMarkets, setGlobalMarkets] = useState([
-      { symbol: 'USD/TRY', price: 34.65, change: 0.12 },
-      { symbol: 'EUR/TRY', price: 36.42, change: -0.05 },
-      { symbol: 'GAU/TRY (Altın)', price: 2950.50, change: 0.45 },
-      { symbol: 'BIST 100', price: 9650.25, change: 1.20 },
-      { symbol: 'NASDAQ', price: 19200.10, change: 0.85 },
-      { symbol: 'BRENT PETROL', price: 72.40, change: -1.10 },
-      { symbol: 'GBP/TRY', price: 43.80, change: 0.08 }
-  ]);
 
   const [searchTerm, setSearchTerm] = useState(""); 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'default' }); 
-  const [chartRange, setChartRange] = useState(24); 
-
-  const [selectedCoin, setSelectedCoin] = useState('BTCUSDT');
-  const [chartData, setChartData] = useState([]);
-  
+  const [selectedCoin, setSelectedCoin] = useState(null); 
   const [showAdmin, setShowAdmin] = useState(false);
   const [notifTitle, setNotifTitle] = useState("");
   const [notifMsg, setNotifMsg] = useState("");
-  const prevCoinsRef = useRef({});
-
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  
   const defaultSortOrder = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'TRXUSDT', 'DOTUSDT', 'MATICUSDT', 'LTCUSDT', 'LINKUSDT', 'SHIBUSDT', 'ATOMUSDT'];
 
+
   useEffect(() => {
-      const interval = setInterval(() => {
-          setGlobalMarkets(prev => prev.map(item => {
-              const move = (Math.random() - 0.5) * 0.02;
-              return {
-                  ...item,
-                  price: item.price * (1 + move / 100),
-                  change: item.change + (move * 10)
-              };
-          }));
-      }, 3000);
-      return () => clearInterval(interval);
-  }, []);
-
-
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area } from 'recharts';
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-
-// --- YENİ EKLENENLER ---
-import Admin from './pages/Admin'; // Admin sayfasını çağırıyoruz
-import { getHistory } from './services/api'; // Servisimizi çağırıyoruz
-
-const socket = io.connect("http://localhost:3001");
-
-function App() {
-  // --- STATE ---
-  const [coins, setCoins] = useState([]);
-  const [activeTab, setActiveTab] = useState('CRYPTO');
-  const [selectedCoin, setSelectedCoin] = useState('BTCUSDT');
-  const [chartData, setChartData] = useState([]);
-  
-  // Admin Panelini Göster/Gizle
-  const [showAdmin, setShowAdmin] = useState(false);
-  
-  const prevCoinsRef = useRef({});
-
-  const markets = [
-      { id: 'CRYPTO', label: 'Kripto Piyasası 🪙' },
-      { id: 'BIST', label: 'BIST 100 🇹🇷' },
-      { id: 'COMMODITY', label: 'Emtia 🛢' },
-      { id: 'US_STOCK', label: 'ABD Borsası 🇺🇸' }
-  ];
-
-  const sortOrder = [
-    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
-    'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'TRXUSDT', 'DOTUSDT',
-    'MATICUSDT', 'LTCUSDT', 'LINKUSDT', 'SHIBUSDT', 'ATOMUSDT'
-  ];
-
-  // --- 1. SOCKET & BİLDİRİM ---
-  useEffect(() => {
-    socket.on("tickerUpdate", (data) => {
-      setCoins((prevCoins) => {
-        const updatedCoins = [...prevCoins];
-        data.forEach(newCoin => {
-            const prevPrice = prevCoinsRef.current[newCoin.symbol];
-            let priceClass = '';
-            if (prevPrice) {
-                if (newCoin.price > prevPrice) priceClass = 'flash-green';
-                else if (newCoin.price < prevPrice) priceClass = 'flash-red';
-            }
-            prevCoinsRef.current[newCoin.symbol] = newCoin.price;
-
-            const index = updatedCoins.findIndex(c => c.symbol === newCoin.symbol);
-            if (index !== -1) {
-                updatedCoins[index] = { ...newCoin, priceClass };
-            } else {
-                updatedCoins.push({ ...newCoin, priceClass });
-            }
-            prevCoinsRef.current[newCoin.symbol] = newCoin.price;
-            const index = updatedCoins.findIndex(c => c.symbol === newCoin.symbol);
-            if (index !== -1) updatedCoins[index] = { ...newCoin, priceClass };
-            else updatedCoins.push({ ...newCoin, priceClass });
+    const handleDataUpdate = (data) => {
+        setCoins((prevCoins) => {
+            let newCoinsList = [...prevCoins];
+            data.forEach(newCoin => {
+                const index = newCoinsList.findIndex(c => c.symbol === newCoin.symbol);
+                if (index !== -1) {
+                    newCoinsList[index] = { ...newCoinsList[index], ...newCoin, logo: newCoin.logo || newCoinsList[index].logo };
+                } else {
+                    const mockMarketCap = newCoin.price * (Math.random() * 1000000 + 500000); 
+                    const mock6m = (Math.random() * 40) - 15; 
+                    const mock1y = (Math.random() * 80) - 20; 
+                    const mock5y = (Math.random() * 300) - 50; 
+                    newCoinsList.push({ ...newCoin, type: newCoin.type || 'CRYPTO', mcap: mockMarketCap, change6m: mock6m, change1y: mock1y, change5y: mock5y });
+                }
+            });
+            return newCoinsList;
         });
-        return updatedCoins;
-      });
-    });
-    socket.on('notification', (notif) => toast.info(<div><strong>{notif.title}</strong><div>{notif.message}</div></div>, { theme: "dark", autoClose: 5000 }));
-    return () => { socket.off('tickerUpdate'); socket.off('notification'); };
-  }, []);
-
-  useEffect(() => {
-    const fetchHistory = async () => {
-        try {
-            if (activeTab === 'CRYPTO') {
-                const res = await axios.get(`${API_URL}/history`, { params: { symbol: selectedCoin } });
-                setChartData(res.data);
-            } else { setChartData([]); }
-        } catch (err) { console.error(err); }
     };
-    fetchHistory();
-  }, [selectedCoin, activeTab]);
 
-  const getProcessedCoins = () => {
-    let processed = coins.filter(coin => coin.name.toLowerCase().includes(searchTerm.toLowerCase()) || coin.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
-    if (sortConfig.key) {
-        processed.sort((a, b) => {
-            if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'descending' ? 1 : -1;
-            if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'descending' ? -1 : 1;
-            return 0;
-        });
-    } else {
-        processed.sort((a, b) => defaultSortOrder.indexOf(a.symbol) - defaultSortOrder.indexOf(b.symbol));
+    socket.on("tickerUpdate", handleDataUpdate);
+    socket.on("marketUpdate", handleDataUpdate);
+    socket.on('notification', (notif) => toast.info(<div><strong style={{color:'#00d2ff'}}>{notif.title}</strong><div>{notif.message}</div></div>, { position: "top-right", theme: "dark", autoClose: 5000 }));
+
+    return () => { socket.off('tickerUpdate'); socket.off('marketUpdate'); socket.off('notification'); };
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getTradingViewSymbol = (coinInput) => {
+    if (!coinInput) return 'BINANCE:BTCUSDT';
+    const symbol = (typeof coinInput === 'object') ? coinInput.symbol : coinInput;
+
+    const specialMap = { 'VODL.IS': 'LSE:VOD' };
+    if (specialMap[symbol]) return specialMap[symbol];
+
+    const bistMap = {
+        'XU100.IS': 'XU100', 'THYAO.IS': 'THYAO', 'GARAN.IS': 'GARAN', 'AKBNK.IS': 'AKBNK',
+        'ISCTR.IS': 'ISCTR', 'YKBNK.IS': 'YKBNK', 'TUPRS.IS': 'TUPRS', 'ASELS.IS': 'ASELS',
+        'KCHOL.IS': 'KCHOL', 'SAHOL.IS': 'SAHOL', 'EREGL.IS': 'EREGL', 'BIMAS.IS': 'BIMAS',
+        'SASA.IS':  'SASA',  'FROTO.IS': 'FROTO', 'PGSUS.IS': 'PGSUS', 'TCELL.IS': 'TCELL',
+        'TTKOM.IS': 'TTKOM'
+    };
+    if (bistMap[symbol]) return bistMap[symbol];
+
+    const symbolMap = { 
+        'TRY=X': 'FX_IDC:USDTRY', 
+        'EURTRY=X': 'FX_IDC:EURTRY', 
+        'GBPTRY=X': 'FX_IDC:GBPTRY', 
+        'EURUSD=X': 'FX_IDC:EURUSD', 
+        'JPYTRY=X': 'FX_IDC:JPYTRY', 
+        'CHFTRY=X': 'FX_IDC:CHFTRY', 
+        'CADTRY=X': 'FX_IDC:CADTRY', 
+        'AUDTRY=X': 'FX_IDC:AUDTRY', 
+        'DX-Y.NYB': 'CAPITALCOM:DXY', 
+        
+        'CNYTRY=X': 'FX_IDC:USDTRY/FX_IDC:USDCNY', 
+        'RUBTRY=X': 'FX_IDC:USDTRY/FX_IDC:USDRUB',
+
+        'GC=F': 'TVC:GOLD', 'SI=F': 'TVC:SILVER', 'CL=F': 'TVC:USOIL', 'BZ=F': 'TVC:UKOIL', 
+        'HG=F': 'OANDA:XCUUSD', 'NG=F': 'CAPITALCOM:NATURALGAS',
+        
+        'GRAM-ALTIN':   'FX_IDC:XAUTRYG',       
+        'CEYREK-ALTIN': 'FX_IDC:XAUTRYG*1.635',  
+        'YARIM-ALTIN':  'FX_IDC:XAUTRYG*3.27',   
+        'TAM-ALTIN':    'FX_IDC:XAUTRYG*6.54',   
+        'GRAM-GUMUS':   'FX_IDC:XAGTRYG'       
+    };
+
+    if (symbolMap[symbol]) return symbolMap[symbol];
+    if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
+    
+    if (symbol.endsWith('.IS')) {
+        return symbol.replace('.IS', '').trim();
     }
-    return processed;
+
+    return symbol.replace('=X', '').replace('=F', '').replace('.NYB', '');
   };
+
+  const getCurrencySymbol = (coin) => {
+      if (coin.type === 'BIST') return '₺';
+      
+      if (['GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.symbol)) {
+          return '₺';
+      }
+
+      if (coin.type === 'FOREX') return ''; 
+      return '$'; 
+  };
+
+  let processedCoins = coins.filter(coin => {
+    if (activeTab === 'FAVORITES') {
+          return false;
+      }
+      if (!coin.type && activeTab === 'CRYPTO') return true;
+      return coin.type === activeTab;
+  });
+
+  if (searchTerm) {
+      processedCoins = processedCoins.filter(coin => coin.name.toLowerCase().includes(searchTerm.toLowerCase()) || coin.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
+  }
+
+  if (sortConfig.key) {
+      processedCoins.sort((a, b) => {
+          if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'descending' ? 1 : -1;
+          if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'descending' ? -1 : 1;
+          return 0;
+      });
+  } else if (activeTab === 'CRYPTO') {
+      processedCoins.sort((a, b) => defaultSortOrder.indexOf(a.symbol) - defaultSortOrder.indexOf(b.symbol));
+  }
+
+  useEffect(() => {
+      if (processedCoins.length > 0) {
+          const isSelectedInList = processedCoins.find(c => c.symbol === selectedCoin);
+          if (!isSelectedInList) setSelectedCoin(processedCoins[0].symbol);
+      }
+  }, [activeTab, coins, searchTerm]);
 
   const handleSort = (key) => {
     let direction = 'descending';
@@ -171,301 +219,171 @@ function App() {
       );
   };
 
-  const getFilteredChartData = () => {
-      if (chartRange === 24) return chartData;
-      return chartData.slice(-chartRange);
-  };
-
   const handleSendNotification = async () => {
     if(!notifTitle || !notifMsg) return;
     try { await axios.post(`${API_URL}/notification`, { title: notifTitle, message: notifMsg }); setNotifTitle(""); setNotifMsg(""); setShowAdmin(false); toast.success("Gonderildi!", { theme: "dark" }); } catch (e) { alert("Hata"); }
   };
 
-    socket.on('notification', (notif) => {
-        toast.info(
-            <div>
-                <strong style={{color:'#00d2ff'}}>{notif.title}</strong>
-                <div>{notif.message}</div>
-                <small style={{fontSize:'0.7em', color:'#ccc'}}>{notif.time}</small>
-            </div>, 
-            { position: "top-right", theme: "dark", autoClose: 5000 }
-        );
-    });
-
-    return () => {
-        socket.off('tickerUpdate');
-        socket.off('notification');
-    };
-  }, []);
-
-  // --- 2. GRAFİK VERİSİ (Servisten Çekiyoruz) ---
-  useEffect(() => {
-    const fetchHistory = async () => {
-        try {
-            if (activeTab === 'CRYPTO') {
-                const data = await getHistory(selectedCoin);
-                setChartData(data);
-            } else {
-                setChartData([]);
-            }
-        } catch (err) { console.error(err); }
-    };
-    fetchHistory();
-  }, [selectedCoin, activeTab]);
-
-  const sortedCoins = [...coins].sort((a, b) => {
-    return sortOrder.indexOf(a.symbol) - sortOrder.indexOf(b.symbol);
-  });
-
-  // --- RENDER ---
   return (
-    <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', padding: '0', boxSizing: 'border-box', overflowX:'hidden' }}>
+    <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box', overflowX:'hidden', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
       <style>{`
         ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1e1e2e; } ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-        @keyframes flashGreen { 0% { color: #00ff88; text-shadow: 0 0 10px #00ff88; transform: scale(1.05); } 100% { color: white; transform: scale(1); } }
-        @keyframes flashRed { 0% { color: #ff4d4d; text-shadow: 0 0 10px #ff4d4d; transform: scale(1.05); } 100% { color: white; transform: scale(1); } }
-        .flash-green { animation: flashGreen 0.8s ease-out; } .flash-red { animation: flashRed 0.8s ease-out; }
-        .nav-btn { background: transparent; border: 1px solid #444; color: #888; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; font-weight: 600; white-space: nowrap; }
-        .nav-btn:hover { background: #2b2b3b; color: white; border-color: #666; }
-        .nav-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; box-shadow: 0 0 15px rgba(0, 210, 255, 0.4); }
-        .time-btn { background: #2b2b3b; border: 1px solid #444; color: #aaa; padding: 5px 12px; margin-left: 5px; border-radius: 5px; cursor: pointer; font-size: 0.85rem; }
-        .time-btn.active { background: #00d2ff; color: black; border-color: #00d2ff; font-weight: bold; }
-        .search-box { background: #1e1e2e; border: 1px solid #444; color: white; padding: 8px 15px; border-radius: 20px; outline: none; width: 200px; transition: all 0.3s; }
-        .search-box:focus { border-color: #00d2ff; box-shadow: 0 0 10px rgba(0, 210, 255, 0.2); width: 250px; }
-        th { cursor: pointer; user-select: none; transition: color 0.2s; } th:hover { color: #00d2ff; }
-        @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .ticker-wrap { width: 100%; overflow: hidden; background-color: #000; border-bottom: 1px solid #333; height: 40px; display: flex; align-items: center; }
-        .ticker { display: flex; white-space: nowrap; animation: scroll 30s linear infinite; }
-        .ticker-item { display: inline-flex; align-items: center; padding: 0 2rem; font-size: 0.9rem; color: #ccc; font-weight: 600; }
-        .ticker:hover { animation-play-state: paused; }
+        .flash-cell-pro { font-family: 'Consolas', monospace; font-weight: 600; padding: 6px 12px; border-radius: 6px; transition: background-color 0.5s ease-out; white-space: nowrap; }
+        @keyframes flashGreenPro { 0% { background-color: rgba(0, 255, 136, 0.25); color: #fff; } 100% { background-color: transparent; } }
+        @keyframes flashRedPro { 0% { background-color: rgba(255, 77, 77, 0.25); color: #fff; } 100% { background-color: transparent; } }
+        .flash-green-pro { animation: flashGreenPro 0.5s ease-out; } .flash-red-pro { animation: flashRedPro 0.5s ease-out; }
+        .nav-btn { background: transparent; border: 1px solid #3a3a45; color: #888; padding: 8px 16px; border-radius: 16px; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+        .nav-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; box-shadow: 0 0 10px rgba(0, 210, 255, 0.3); }
+        .search-box { background: #181820; border: 1px solid #333; color: white; padding: 6px 12px; border-radius: 16px; outline: none; width: 180px; transition: all 0.3s; font-size: 0.9rem; }
+        .search-box:focus { border-color: #00d2ff; width: 220px; }
+        .search-clear-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; cursor: pointer; }
+        th { cursor: pointer; transition: color 0.2s; font-size: 0.85rem; font-weight: 600; color: #888; } th:hover { color: #00d2ff; }
+        @keyframes bg-pan { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .ticker-wrap { width: 100%; overflow: hidden; background: linear-gradient(270deg, rgba(30, 30, 50, 0.95), rgba(40, 40, 70, 0.95)); background-size: 400% 400%; animation: bg-pan 15s ease infinite; border-bottom: 1px solid rgba(0, 210, 255, 0.3); height: 45px; display: flex; align-items: center; }
+        .ticker-track { display: flex; animation: ticker-scroll 120s linear infinite; gap: 15px; padding-left: 20px; }
+        .ticker-card { display: flex; align-items: center; background: rgba(37, 37, 48, 0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap; font-size: 0.85rem; }
+        .ticker-symbol { font-weight: 700; color: #fff; margin-right: 8px; }
+        .ticker-price { font-family: 'Consolas', monospace; font-weight: 600; color: #eee; margin-right: 10px; }
+        .badge { padding: 2px 5px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+        .badge.up { background: rgba(0, 255, 136, 0.1); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3); }
+        .badge.down { background: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid rgba(255, 77, 77, 0.3); }
+        .badge.neutral { background: rgba(136, 136, 136, 0.1); color: #aaa; border: 1px solid #555; }
+        .digital-clock-time { font-family: 'Consolas', monospace; font-size: 1.3rem; font-weight: 700; color: white; text-align: right; }
+        .digital-clock-date { font-size: 0.75rem; color: #888; font-weight: 500; text-align: right; }
+        .fullscreen-btn { background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; margin-left: 15px; font-size: 1.1rem; }
       `}</style>
 
       <div className="ticker-wrap">
-          <div className="ticker">
-              {[...globalMarkets, ...globalMarkets].map((item, index) => (
-                  <div className="ticker-item" key={index}>
-                      <span style={{color:'white', marginRight:'8px'}}>{item.symbol}:</span>
-                      <span style={{color: item.change > 0 ? '#00ff88' : '#ff4d4d'}}>
-                          {item.price.toFixed(2)} 
-                          <span style={{fontSize:'0.8em', marginLeft:'5px'}}>({item.change > 0 ? '+' : ''}%{item.change.toFixed(2)})</span>
-                      </span>
-                  </div>
-              ))}
+          <div className="ticker-track">
+              {[...coins, ...coins].map((coin, index) => {
+                  const change = parseFloat(coin.change);
+                  let badgeClass = 'neutral';
+                  let arrow = '▬'; 
+                  if (change > 0) { badgeClass = 'up'; arrow = '▲'; }
+                  else if (change < 0) { badgeClass = 'down'; arrow = '▼'; }
+
+                  return (
+                      <div key={`${coin.symbol}-${index}`} className="ticker-card">
+                          <span className="ticker-symbol">{coin.symbol}</span>
+                          <span className="ticker-price">{getCurrencySymbol(coin)}{coin.price?.toFixed(2)}</span>
+                          <span className={`badge ${badgeClass}`}>{arrow} %{Math.abs(change || 0).toFixed(2)}</span>
+                      </div>
+                  );
+              })}
           </div>
       </div>
 
-      <div style={{ padding: '20px' }}>
-        <div style={{ width: '100%', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px', padding:'0 10px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'10px'}}> <h1 style={{ color: '#00d2ff', margin: 0, fontSize:'2rem', fontWeight:'800' }}>CryptoLive</h1> </div>
-            <button onClick={() => setShowAdmin(!showAdmin)} style={{ background: 'linear-gradient(45deg, #00d2ff, #007aff)', border: 'none', padding: '10px 25px', borderRadius: '30px', fontWeight: 'bold', cursor:'pointer', color:'white', boxShadow:'0 4px 15px rgba(0, 210, 255, 0.3)' }}>Admin Paneli</button>
-        </div>
+      <div style={{ padding: '15px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: '100%', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding:'0 5px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px'}}> <h1 style={{ color: '#00d2ff', margin: 0, fontSize:'1.8rem', fontWeight:'800', letterSpacing:'-0.5px' }}>CryptoLive</h1> </div>
+              <button onClick={() => setShowAdmin(!showAdmin)} style={{ background: 'linear-gradient(45deg, #00d2ff, #007aff)', border: 'none', padding: '8px 20px', borderRadius: '20px', fontWeight: '700', fontSize:'0.9rem', cursor:'pointer', color:'white' }}>Admin</button>
+          </div>
 
-        <div style={{ width: '100%', display: 'flex', gap: '15px', padding: '0 10px', marginBottom: '25px', overflowX: 'auto', paddingBottom:'10px' }}>
-            {markets.map(market => ( <button key={market.id} className={`nav-btn ${activeTab === market.id ? 'active' : ''}`} onClick={() => setActiveTab(market.id)}>{market.label}</button> ))}
-        </div>
+          <div style={{ width: '100%', display: 'flex', gap: '10px', padding: '0 5px', marginBottom: '10px', overflowX: 'auto', paddingBottom:'5px' }}>
+              {markets.map(market => ( <button key={market.id} className={`nav-btn ${activeTab === market.id ? 'active' : ''}`} onClick={() => { setActiveTab(market.id); setSelectedCoin(null); }}>{market.label}</button> ))}
+          </div>
 
-        {showAdmin && (
-            <div style={{ position:'fixed', top:'0', left:'0', width:'100%', height:'100%', background:'rgba(0,0,0,0.7)', zIndex:999, display:'flex', justifyContent:'center', alignItems:'center' }}>
-                <div style={{ background:'#2b2b3b', padding:'30px', borderRadius:'20px', border:'1px solid #00d2ff', width:'400px', boxShadow:'0 0 50px rgba(0, 210, 255, 0.2)' }}>
-                    <h2 style={{marginTop:0}}>Bildirim Gonder</h2>
-                    <input type="text" placeholder="Baslik" value={notifTitle} onChange={e=>setNotifTitle(e.target.value)} style={{width:'100%', padding:'12px', marginBottom:'15px', borderRadius:'8px', border:'none', background:'#1e1e2e', color:'white', boxSizing:'border-box'}} />
-                    <textarea placeholder="Mesaj" value={notifMsg} onChange={e=>setNotifMsg(e.target.value)} style={{width:'100%', padding:'12px', height:'100px', marginBottom:'15px', borderRadius:'8px', border:'none', background:'#1e1e2e', color:'white', boxSizing:'border-box'}} />
-                    <div style={{display:'flex', gap:'10px'}}> <button onClick={() => setShowAdmin(false)} style={{flex:1, background:'#444', border:'none', padding:'12px', borderRadius:'8px', color:'white', cursor:'pointer'}}>Iptal</button> <button onClick={handleSendNotification} style={{flex:1, background:'#00d2ff', border:'none', padding:'12px', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>GONDER</button> </div>
-                </div>
-            </div>
-        )}
+          {showAdmin && (
+              <div style={{ position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.7)', zIndex:999, display:'flex', justifyContent:'center', alignItems:'center' }}>
+                  <div style={{ background:'#2b2b3b', padding:'30px', borderRadius:'10px', border:'1px solid #444', width:'400px' }}>
+                      <h2 style={{marginTop:0, color:'white'}}>Bildirim Gönder</h2>
+                      <input type="text" placeholder="Başlık" value={notifTitle} onChange={e=>setNotifTitle(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'10px', borderRadius:'6px', background:'#1e1e2e', color:'white', border:'1px solid #444'}} />
+                      <textarea placeholder="Mesaj" value={notifMsg} onChange={e=>setNotifMsg(e.target.value)} style={{width:'100%', padding:'10px', height:'80px', marginBottom:'15px', borderRadius:'6px', background:'#1e1e2e', color:'white', border:'1px solid #444'}} />
+                      <div style={{display:'flex', gap:'10px'}}> <button onClick={() => setShowAdmin(false)} style={{flex:1, background:'#444', border:'none', padding:'10px', borderRadius:'6px', color:'white', cursor:'pointer'}}>İptal</button> <button onClick={handleSendNotification} style={{flex:1, background:'#00d2ff', border:'none', padding:'10px', borderRadius:'6px', fontWeight:'bold', cursor:'pointer'}}>GÖNDER</button> </div>
+                  </div>
+              </div>
+          )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '20px', width: '100%', height: 'calc(100vh - 220px)' }}>
-            <div style={{ background: '#1e1e2e', borderRadius: '20px', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 10px 30px rgba(0,0,0,0.3)', border:'1px solid #333' }}>
-                <div style={{ padding:'15px', borderBottom:'1px solid #333', background:'#252530', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <h3 style={{margin:0, fontSize:'1.1rem'}}>Canli Piyasa</h3>
-                    <input type="text" placeholder="Coin Ara..." className="search-box" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                </div>
-                <div style={{ overflowY:'auto', flex:1 }}>
-                    {activeTab === 'CRYPTO' ? (
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
-                                <tr style={{ color: '#888', textAlign: 'left', fontSize:'0.9rem' }}>
-                                    <th style={{ padding: '15px 20px' }}>Coin</th>
-                                    <th style={{ padding: '15px 20px', textAlign:'right' }} onClick={() => handleSort('price')}>Fiyat {renderSortIcon('price')}</th>
-                                    <th style={{ padding: '15px 20px', textAlign:'right' }} onClick={() => handleSort('change')}>Degisim {renderSortIcon('change')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {getProcessedCoins().map((coin) => (
-                                    <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #2a2a35', cursor:'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.08)' : 'transparent', transition: 'background 0.2s' }}>
-                                        <td style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}> <img src={coin.logo} alt={coin.name} width="32" height="32" style={{ borderRadius: '50%' }} /> <div> <div style={{ fontWeight: 'bold', fontSize:'1rem' }}>{coin.name}</div> <div style={{ fontSize: '0.75rem', color: '#666' }}>{coin.symbol}</div> </div> </td>
-                                        <td className={coin.priceClass} style={{ textAlign:'right', fontWeight: '600', fontFamily:'monospace', fontSize:'1.1rem', paddingRight:'20px' }}>${coin.price?.toFixed(2)}</td>
-                                        <td style={{ textAlign:'right', fontWeight: 'bold', color: parseFloat(coin.change) > 0 ? '#00ff88' : '#ff4d4d', paddingRight:'20px' }}>%{coin.change ? coin.change.toFixed(2) : "0.00"}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : ( <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}><h3>Yapim Asamasinda</h3><p>{activeTab} verileri yakinda...</p></div> )}
-                </div>
-            </div>
-
-            <div style={{ background: '#1e1e2e', borderRadius: '20px', padding: '25px', display:'flex', flexDirection:'column', boxShadow:'0 10px 30px rgba(0,0,0,0.3)', border:'1px solid #333', position:'relative' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
-                    <div> <h2 style={{ margin: 0, fontSize:'1.8rem' }}>{selectedCoin} Grafigi</h2> <span style={{ color:'#888' }}>Performans Analizi</span> </div>
-                    <div style={{ display:'flex', alignItems:'center' }}>
-                        <span style={{fontSize:'0.8rem', color:'#666', marginRight:'10px'}}>Zaman:</span>
-                        <button className={`time-btn ${chartRange === 6 ? 'active' : ''}`} onClick={() => setChartRange(6)}>6S</button>
-                        <button className={`time-btn ${chartRange === 12 ? 'active' : ''}`} onClick={() => setChartRange(12)}>12S</button>
-                        <button className={`time-btn ${chartRange === 24 ? 'active' : ''}`} onClick={() => setChartRange(24)}>24S</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '15px', width: '100%', height: 'calc(100vh - 180px)' }}>
+              <div style={{ background: '#1e1e2e', borderRadius: '12px', overflow:'hidden', display:'flex', flexDirection:'column', border:'1px solid #333' }}>
+                  <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <h3 style={{margin:0, fontSize:'1rem', fontWeight:'700', color:'#eee'}}>{markets.find(m => m.id === activeTab)?.label}</h3>
+                    <div style={{position:'relative'}}>
+                        <input type="text" placeholder="Ara..." className="search-box" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{paddingRight: searchTerm ? '30px' : '12px'}} />
+                        {searchTerm && <span className="search-clear-btn" onClick={() => setSearchTerm("")}>✕</span>}
                     </div>
                 </div>
-                <div style={{ flex: 1, width: '100%', minHeight: '0' }}> 
-                    {chartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={getFilteredChartData()}>
-                                <defs>
-                                    <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#00d2ff" stopOpacity={0.3}/>
-                                        <stop offset="95%" stopColor="#00d2ff" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                                <XAxis dataKey="time" stroke="#666" tick={{fontSize: 12}} minTickGap={30} />
-                                <YAxis domain={['auto', 'auto']} stroke="#666" tick={{fontSize: 12}} orientation="right" />
-                                <Tooltip contentStyle={{ backgroundColor: '#252530', borderColor: '#444', borderRadius:'10px', boxShadow:'0 5px 15px black' }} itemStyle={{ color: '#00d2ff' }} />
-                                <Area type="monotone" dataKey="price" stroke="#00d2ff" strokeWidth={3} fillOpacity={1} fill="url(#colorPrice)" />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    ) : ( <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'10px' }}>Veri yukleniyor...</div> )}
-                </div>
-            </div>
-        </div>
-    <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', padding: '20px', boxSizing: 'border-box' }}>
-      <ToastContainer />
-      
-      {showAdmin && <Admin onClose={() => setShowAdmin(false)} />}
-
-      <style>{`
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #1e1e2e; }
-        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-        @keyframes flashGreen { 0% { color: #00ff88; text-shadow: 0 0 10px #00ff88; transform: scale(1.05); } 100% { color: white; transform: scale(1); } }
-        @keyframes flashRed { 0% { color: #ff4d4d; text-shadow: 0 0 10px #ff4d4d; transform: scale(1.05); } 100% { color: white; transform: scale(1); } }
-        .flash-green { animation: flashGreen 0.8s ease-out; }
-        .flash-red { animation: flashRed 0.8s ease-out; }
-        .nav-btn { background: transparent; border: 1px solid #444; color: #888; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; font-weight: 600; }
-        .nav-btn:hover { background: #2b2b3b; color: white; border-color: #666; }
-        .nav-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; box-shadow: 0 0 15px rgba(0, 210, 255, 0.4); }
-      `}</style>
-
-      {/* HEADER */}
-      <div style={{ width: '100%', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px', padding:'0 10px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px'}}>
-             <h1 style={{ color: '#00d2ff', margin: 0, fontSize:'2rem', fontWeight:'800' }}>CryptoLive</h1>
-          </div>
-          <button onClick={() => setShowAdmin(true)} style={{ background: 'linear-gradient(45deg, #00d2ff, #007aff)', border: 'none', padding: '10px 25px', borderRadius: '30px', fontWeight: 'bold', cursor:'pointer', color:'white', boxShadow:'0 4px 15px rgba(0, 210, 255, 0.3)' }}>
-              Admin Paneli
-          </button>
-      </div>
-
-      {/* MENÜLER */}
-      <div style={{ width: '100%', display: 'flex', gap: '15px', padding: '0 10px', marginBottom: '25px', overflowX: 'auto' }}>
-          {markets.map(market => (
-              <button 
-                  key={market.id} 
-                  className={`nav-btn ${activeTab === market.id ? 'active' : ''}`} 
-                  onClick={() => setActiveTab(market.id)}
-              >
-                  {market.label}
-              </button>
-          ))}
-      </div>
-
-      {/* ANA İÇERİK (Tablo ve Grafik) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '20px', width: '100%', height: 'calc(100vh - 180px)' }}>
-          
-          {/* SOL: TABLO */}
-          <div style={{ background: '#1e1e2e', borderRadius: '20px', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 10px 30px rgba(0,0,0,0.3)', border:'1px solid #333' }}>
-              <div style={{ padding:'20px', borderBottom:'1px solid #333', background:'#252530' }}>
-                 <h3 style={{margin:0}}>{markets.find(m => m.id === activeTab)?.label}</h3>
-              </div>
-              
-              <div style={{ overflowY:'auto', flex:1 }}>
-                  {activeTab === 'CRYPTO' ? (
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <div style={{ overflowY:'auto', overflowX: 'auto', flex:1 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '650px' }}>
                           <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
-                              <tr style={{ color: '#888', textAlign: 'left', fontSize:'0.9rem' }}>
-                                  <th style={{ padding: '15px 20px' }}>Coin</th>
-                                  <th style={{ padding: '15px 20px', textAlign:'right' }}>Fiyat</th>
-                                  <th style={{ padding: '15px 20px', textAlign:'right' }}>Değişim</th>
+                              <tr style={{ color: '#888', textAlign: 'left', fontSize:'0.8rem', borderBottom:'1px solid #333' }}>
+                                  <th style={{ padding: '10px 15px', position:'sticky', left:0, background:'#1e1e2e', zIndex:11 }}>Enstrüman</th>
+                                  <th style={{ padding: '10px', textAlign:'right', width:'110px' }} onClick={() => handleSort('price')}>Fiyat {renderSortIcon('price')}</th>
+                                  <th style={{ padding: '10px', textAlign:'right', width:'90px' }} onClick={() => handleSort('change')}>24s {renderSortIcon('change')}</th>
+                                  <th style={{ padding: '10px', textAlign:'right', width:'100px' }}>Piyasa Değ.</th>
+                                  <th style={{ padding: '10px', textAlign:'right' }}>6 Ay</th>
+                                  <th style={{ padding: '10px', textAlign:'right' }}>1 Yıl</th>
+                                  <th style={{ padding: '10px', textAlign:'right' }}>5 Yıl</th>
                               </tr>
                           </thead>
                           <tbody>
-                              {sortedCoins.map((coin) => (
-                                  <tr 
-                                      key={coin.symbol} 
-                                      onClick={() => setSelectedCoin(coin.symbol)} 
-                                      style={{ borderBottom: '1px solid #2a2a35', cursor:'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.08)' : 'transparent', transition: 'background 0.2s' }}
-                                  >
-                                      <td style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                          <img src={coin.logo} alt={coin.name} width="32" height="32" style={{ borderRadius: '50%' }} />
-                                          <div>
-                                              <div style={{ fontWeight: 'bold', fontSize:'1rem' }}>{coin.name}</div>
-                                              <div style={{ fontSize: '0.75rem', color: '#666' }}>{coin.symbol}</div>
-                                          </div>
+                              {processedCoins.map((coin) => (
+                                  <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #2a2a35', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
+                                      <td style={{ padding: '8px 15px', display: 'flex', alignItems: 'center', gap: '10px', position:'sticky', left:0, background: selectedCoin === coin.symbol ? '#22262d' : '#1e1e2e', zIndex:1, borderRight:'1px solid #2a2a35' }}> 
+                                          {coin.logo ? <img src={coin.logo} alt={coin.name} width="28" height="28" style={{ borderRadius: '50%', background:'white', padding:'2px' }} onError={(e) => { e.target.style.display = 'none'; }} /> : null}
+                                          <div> <div style={{ fontWeight: '700', fontSize:'0.9rem', color:'#eee' }}>{coin.name}</div> <div style={{ fontSize: '0.7rem', color: '#777' }}>{coin.symbol}</div> </div> 
                                       </td>
                                       
-                                      <td className={coin.priceClass} style={{ textAlign:'right', fontWeight: '600', fontFamily:'monospace', fontSize:'1.1rem', paddingRight:'20px' }}>
-                                          ${coin.price?.toFixed(2)}
-                                      </td>
+                                      <FlashCell value={coin.price} prefix={getCurrencySymbol(coin)} align="right" width="110px" />
+                                      {/* Değişim 0 ise GRİ 0.00% yazar */}
+                                      <FlashCell value={coin.change} suffix="%" align="right" isChange={true} width="90px" />
                                       
-                                      <td style={{ textAlign:'right', fontWeight: 'bold', color: parseFloat(coin.change) > 0 ? '#00ff88' : '#ff4d4d', paddingRight:'20px' }}>
-                                          %{coin.change ? coin.change.toFixed(2) : "0.00"}
-                                      </td>
+                                      <td style={{ textAlign:'right', padding:'0 10px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.85rem' }}>{formatMarketCap(coin.mcap, getCurrencySymbol(coin))}</td>
+                                      <FlashCell value={coin.change6m} suffix="%" align="right" isChange={true} width="80px" fontSize="0.85rem" />
+                                      <FlashCell value={coin.change1y} suffix="%" align="right" isChange={true} width="80px" fontSize="0.85rem" />
+                                      <FlashCell value={coin.change5y} suffix="%" align="right" isChange={true} width="80px" fontSize="0.85rem" />
                                   </tr>
                               ))}
                           </tbody>
                       </table>
-                  ) : (
-                      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-                          <h3>🚧 Yapım Aşamasında</h3>
-                          <p>{activeTab} verileri yakında eklenecek.</p>
-                      </div>
-                  )}
-              </div>
-          </div>
-
-          {/* SAĞ: GRAFİK */}
-          <div style={{ background: '#1e1e2e', borderRadius: '20px', padding: '25px', display:'flex', flexDirection:'column', boxShadow:'0 10px 30px rgba(0,0,0,0.3)', border:'1px solid #333', position:'relative' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
-                  <div>
-                    <h2 style={{ margin: 0, fontSize:'1.8rem' }}>{activeTab === 'CRYPTO' ? selectedCoin : 'Veri Yok'}</h2>
-                    <span style={{ color:'#888' }}>Grafik Analizi</span>
+                      {processedCoins.length === 0 && (
+                          <div style={{padding:'20px', textAlign:'center', color:'#666', fontSize:'0.9rem'}}>
+                              {activeTab === 'FAVORITES' ? 'Henüz favori eklenmedi.' : 'Veri bekleniyor...'}
+                          </div>
+                      )}
                   </div>
               </div>
 
-              <div style={{ flex: 1, width: '100%', minHeight: '0' }}> 
-                {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
-                            <defs>
-                                <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#00d2ff" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#00d2ff" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                            <XAxis dataKey="time" stroke="#666" tick={{fontSize: 12}} minTickGap={50} />
-                            <YAxis domain={['auto', 'auto']} stroke="#666" tick={{fontSize: 12}} orientation="right" />
-                            <Tooltip contentStyle={{ backgroundColor: '#252530', borderColor: '#444', borderRadius:'10px', boxShadow:'0 5px 15px black' }} itemStyle={{ color: '#00d2ff' }} />
-                            <Area type="monotone" dataKey="price" stroke="#00d2ff" strokeWidth={3} fillOpacity={1} fill="url(#colorPrice)" />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'10px' }}>
-                        Bu piyasa için henüz grafik verisi yok.
-                    </div>
-                )}
+              <div style={isFullScreen ? { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1000, background: '#1e1e2e', padding: '20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' } : { background: '#1e1e2e', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', border: '1px solid #333', position: 'relative' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding: '0 5px', flexShrink: 0 }}>
+                      <div> 
+                        <h2 style={{ margin: 0, fontSize:'1.3rem', fontWeight:'700', color:'#eee' }}>{coins.find(c => c.symbol === selectedCoin)?.name || selectedCoin || "Seçim Yapın"}</h2> 
+                        <span style={{ color:'#777', fontSize: '0.8rem' }}>TradingView Analiz</span> 
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center'}}>
+                          <div className="digital-clock-container">
+                              <div className="digital-clock-time">{currentTime.toLocaleTimeString()}</div>
+                              <div className="digital-clock-date">{currentTime.toLocaleDateString()}</div>
+                          </div>
+                          <button className="fullscreen-btn" onClick={() => setIsFullScreen(!isFullScreen)}>{isFullScreen ? '✕' : '⤢'}</button>
+                      </div>
+                  </div>
+                  
+                  <div style={{ flex: 1, width: '100%', minHeight: '0', overflow:'hidden', borderRadius:'8px', position:'relative' }}> 
+                    {selectedCoin ? (
+                        <div key={getTradingViewSymbol(selectedCoin)} style={{ width: '100%', height: '100%' }}>
+                            <TradingViewWidget 
+                                symbol={getTradingViewSymbol(selectedCoin)} 
+                                theme="dark" 
+                                autosize 
+                                interval="D"
+                                timezone="Etc/UTC"
+                                style="1"
+                                locale="tr"
+                                toolbar_bg="#f1f3f6"
+                                enable_publishing={false}
+                                hide_side_toolbar={false}
+                                allow_symbol_change={true}
+                            />
+                        </div>
+                    ) : (
+                        <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'8px', fontSize:'0.9rem' }}>Grafik yükleniyor...</div>
+                    )}
+                  </div>
               </div>
           </div>
-
       </div>
     </div>
   );
