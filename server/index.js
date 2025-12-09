@@ -4,7 +4,8 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require("socket.io");
 const WebSocket = require('ws');
-const https = require('https'); 
+const https = require('https');
+const fs = require('fs');
 const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance();
 
@@ -14,6 +15,80 @@ app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+const DB_FILE = 'data.json';
+
+const readDB = () => {
+    try {
+        if (!fs.existsSync(DB_FILE)) {
+            const initialData = { users: [], favorites: {}, alarms: [] };
+            fs.writeFileSync(DB_FILE, JSON.stringify(initialData));
+            return initialData;
+        }
+        const data = fs.readFileSync(DB_FILE, 'utf8');
+        const parsed = JSON.parse(data);
+        
+        if (!parsed.alarms) parsed.alarms = [];
+        
+        return parsed;
+    } catch (err) {
+        console.error("DB Okuma Hatası:", err);
+        return { users: [], favorites: {}, alarms: [] };
+    }
+};
+
+const writeDB = (data) => {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error("DB Yazma Hatası:", err);
+    }
+};
+
+// --- GÜNCELLENEN KISIM: Check Alarms (Notu Bildirime Ekleme) ---
+const checkAlarms = (marketData) => {
+    const db = readDB();
+    if (!db.alarms || db.alarms.length === 0) return; 
+
+    let alarmTriggered = false;
+
+    const remainingAlarms = db.alarms.filter(alarm => {
+        const coin = marketData.find(c => c.symbol === alarm.symbol);
+        
+        if (coin && coin.price) {
+            const currentPrice = parseFloat(coin.price);
+            const targetPrice = parseFloat(alarm.targetPrice);
+            let isTriggered = false;
+
+            if (alarm.direction === 'UP' && currentPrice >= targetPrice) isTriggered = true;
+            if (alarm.direction === 'DOWN' && currentPrice <= targetPrice) isTriggered = true;
+
+            if (isTriggered) {
+                console.log(`🔔 ALARM TETİKLENDİ: ${alarm.username} -> ${alarm.symbol} @ ${currentPrice}`);
+                
+                // NOTU BİLDİRİM MESAJINA EKLEME
+                const userNote = alarm.note ? `\n📝 Notun: ${alarm.note}` : '';
+
+                io.emit('notification', {
+                    targetUser: alarm.username, 
+                    title: `🔔 FİYAT ALARMI: ${alarm.symbol}`,
+                    message: `${alarm.symbol} hedeflediğin ${targetPrice} fiyatına ulaştı! (Güncel: ${currentPrice})${userNote}`,
+                    type: 'success'
+                });
+                
+                alarmTriggered = true;
+                return false; // Tetiklenen alarmı silmek için false dönüyoruz
+            }
+        }
+        return true; // Tetiklenmeyenler kalsın
+    });
+
+    if (alarmTriggered) {
+        db.alarms = remainingAlarms;
+        writeDB(db);
+    }
+};
+
 
 const COIN_METADATA = {
     'BTCUSDT': { name: 'Bitcoin', logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
@@ -214,6 +289,8 @@ function startFakeTickerService() {
             return { symbol, name: info.name, logo: info.logo, price: newPrice, change: changePercent * 100 };
         });
         io.emit('tickerUpdate', fakeData);
+        // Fake servis çalışırken de alarmları kontrol etmeliyiz
+        checkAlarms(fakeData); 
     }, 1000); 
 }
 
@@ -240,12 +317,122 @@ try {
                     };
                 });
                 io.emit('tickerUpdate', cleanData);
+                checkAlarms(cleanData); // Alarm kontrolünü burada çağırıyoruz
             }
         } catch (e) { console.error("Binance mesaj işleme hatası:", e);}
     });
 } catch (e) {console.error("Binance bağlanırken kritik hata:", e);}
 
 setTimeout(() => { if (!isBinanceWorking) startFakeTickerService(); }, 5000);
+
+app.post('/api/register', (req, res) => {
+    const { username, password } = req.body;
+    const db = readDB();
+    if (db.users.find(u => u.username === username)) {
+        return res.status(400).json({ success: false, message: 'Bu kullanıcı adı zaten alınmış.' });
+    }
+    db.users.push({ username, password });
+    db.favorites[username] = [];
+    writeDB(db);
+    console.log(`YENİ KULLANICI: ${username}`);
+    res.json({ success: true, message: 'Kayıt başarılı! Giriş yapabilirsin.' });
+});
+
+app.post('/api/user-login', (req, res) => {
+    const { username, password } = req.body;
+    const db = readDB();
+    const user = db.users.find(u => u.username === username && u.password === password);
+    if (user) {
+        const userFavs = db.favorites[username] || [];
+        res.json({ success: true, username: user.username, favorites: userFavs });
+    } else {
+        res.status(401).json({ success: false, message: 'Kullanıcı adı veya şifre yanlış.' });
+    }
+});
+
+app.post('/api/toggle-favorite', (req, res) => {
+    const { username, symbol } = req.body;
+    const db = readDB();
+    if (!db.favorites[username]) db.favorites[username] = [];
+    const currentFavs = db.favorites[username];
+    const index = currentFavs.indexOf(symbol);
+    if (index === -1) currentFavs.push(symbol);
+    else currentFavs.splice(index, 1);
+    db.favorites[username] = currentFavs;
+    writeDB(db);
+    res.json({ success: true, favorites: currentFavs });
+});
+
+// --- GÜNCELLENEN KISIM: Alarm Güncelleme (Notu Kaydetme) ---
+app.post('/api/update-alarm', (req, res) => {
+    const { username, alarmId, newTargetPrice, currentPrice, note } = req.body; // note eklendi
+    const db = readDB();
+
+    const alarmIndex = db.alarms.findIndex(a => a.id === alarmId && a.username === username);
+    
+    if (alarmIndex !== -1) {
+        db.alarms[alarmIndex].targetPrice = parseFloat(newTargetPrice);
+        db.alarms[alarmIndex].note = note || ""; // Notu güncelle
+        
+        const direction = parseFloat(newTargetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
+        db.alarms[alarmIndex].direction = direction;
+
+        writeDB(db);
+        res.json({ success: true, message: 'Alarm güncellendi.' });
+    } else {
+        res.status(404).json({ success: false, message: 'Alarm bulunamadı.' });
+    }
+});
+
+app.post('/api/get-alarms', (req, res) => {
+    const { username } = req.body;
+    const db = readDB();
+    const userAlarms = db.alarms.filter(a => a.username === username);
+    res.json({ success: true, alarms: userAlarms });
+});
+
+app.post('/api/delete-alarm', (req, res) => {
+    const { username, alarmId } = req.body;
+    const db = readDB();
+    
+    const initialLength = db.alarms.length;
+    db.alarms = db.alarms.filter(a => !(a.id === alarmId && a.username === username));
+    
+    writeDB(db);
+    res.json({ success: true, message: 'Alarm silindi.' });
+});
+
+// --- GÜNCELLENEN KISIM: Alarm Kurma (Notu Kaydetme) ---
+app.post('/api/set-alarm', (req, res) => {
+    const { username, symbol, targetPrice, currentPrice, note } = req.body; // note eklendi
+    const db = readDB();
+
+    const direction = parseFloat(targetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
+
+    const newAlarm = {
+        id: Date.now(),
+        username,
+        symbol,
+        targetPrice: parseFloat(targetPrice),
+        direction,
+        note: note || "" // Notu kaydet
+    };
+
+    db.alarms.push(newAlarm);
+    writeDB(db);
+
+    console.log(`ALARM KURULDU: ${username} -> ${symbol} Hedef: ${targetPrice}, Not: ${note}`);
+    res.json({ success: true, message: `${symbol} için ${targetPrice} fiyatına alarm kuruldu!` });
+});
+
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+    if (username === 'admin' && password === '1234') {
+        res.json({ success: true, token: 'admin-token' });
+    } else {
+        res.status(401).json({ success: false, message: 'Hatalı admin girişi!' });
+    }
+});
 
 app.post('/api/notification', (req, res) => {
     const { title, message, type } = req.body;

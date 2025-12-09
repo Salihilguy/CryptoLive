@@ -1,82 +1,97 @@
 import React, { useState } from 'react';
-import { sendNotification } from '../services/api';
-import { toast, ToastContainer } from 'react-toastify';
+import { AuthService } from '../services/api'; // Servisi çağırdık
 
-// 'onClose' prop'u: App.jsx'e "Ben işimi bitirdim, beni kapat" demek için
-export default function Admin({ onClose }) {
-    const [password, setPassword] = useState("");
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [title, setTitle] = useState("");
-    const [message, setMessage] = useState("");
-    const [loading, setLoading] = useState(false);
+const AdminLogin = ({ onLoginSuccess }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-    const handleLogin = () => {
-        if (password === "1234") {
-            setIsAuthenticated(true);
-            toast.success("Giriş Başarılı");
-        } else {
-            toast.error("Hatalı Şifre");
-        }
-    };
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
 
-    const handleSend = async () => {
-        if (!title || !message) return toast.warning("Boş alan bırakmayın");
-        setLoading(true);
-        try {
-            await sendNotification(title, message);
-            toast.success("Bildirim Yollandı! 🚀");
-            setTitle(""); setMessage("");
-        } catch (e) {
-            toast.error("Hata oluştu");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // 1. GİRİŞ EKRANI
-    if (!isAuthenticated) {
-        return (
-            <div style={{ position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.9)', zIndex:999, display:'flex', justifyContent:'center', alignItems:'center' }}>
-                <div style={{ background:'#1e1e2e', padding:'40px', borderRadius:'10px', width:'300px', textAlign:'center', border:'1px solid #444' }}>
-                    <h2 style={{color:'white'}}>🛡 Admin Girişi</h2>
-                    <input
-    
-    type="password"
-    value={password}
-    onChange={e => setPassword(e.target.value)}
-    onKeyDown={e => e.key === "Enter" && handleLogin()}
-    style={{
-        width:'100%',
-        padding:'10px',
-        marginBottom:'10px',
-        borderRadius:'5px'
-    }}
-/>
-
-
-                    <button onClick={handleLogin} style={{width:'100%', padding:'10px', background:'#007aff', color:'white', border:'none', borderRadius:'5px', cursor:'pointer'}}>GİRİŞ</button>
-                    <button onClick={onClose} style={{marginTop:'10px', background:'transparent', border:'none', color:'#888', cursor:'pointer'}}>İptal / Geri Dön</button>
-                </div>
-            </div>
-        );
+    try {
+      // DÜZELTİLEN KISIM BURASI: .login yerine .adminLogin oldu
+      const result = await AuthService.adminLogin(username, password);
+      
+      if (result.success) {
+        onLoginSuccess(); // App.js'e "Tamamdır, içeri al" diyoruz
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Bir hata oluştu!');
+      setLoading(false);
     }
+  };
 
-    // 2. PANEL EKRANI
-    return (
-        <div style={{ position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'#13131a', zIndex:999, padding:'40px', color:'white', overflowY:'auto' }}>
-            <ToastContainer theme="dark"/>
-            <button onClick={onClose} style={{position:'absolute', top:'20px', right:'120px', background:'#ff4d4d', color:'white', border:'none', padding:'10px 20px', borderRadius:'5px', cursor:'pointer'}}>Kapat ✕</button>
-            
-            <div style={{maxWidth:'600px', margin:'50px auto'}}>
-                <h1>📢 Bildirim Merkezi</h1>
-                <div style={{background:'#1e1e2e', padding:'30px', borderRadius:'20px', border:'1px solid #00d2ff'}}>
-                    <input type="text" placeholder="Başlık" value={title} onChange={e=>setTitle(e.target.value)} style={{width:'100%', padding:'15px', marginBottom:'20px', background:'#13131a', border:'none', color:'white'}} />
-                    <textarea placeholder="Mesaj" value={message} onChange={e=>setMessage(e.target.value)} style={{width:'100%', height:'150px', padding:'15px', marginBottom:'20px', background:'#13131a', border:'none', color:'white'}} />
-                    <button onClick={handleSend} disabled={loading} style={{width:'100%', padding:'15px', background:'#00d2ff', border:'none', borderRadius:'5px', fontWeight:'bold', cursor:'pointer'}}>
-                        {loading ? 'GÖNDERİLİYOR...' : 'HERKESE GÖNDER 🚀'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
+  return (
+    <div style={{
+      backgroundColor: '#13131a',
+      height: '100vh',
+      width: '100vw',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      fontFamily: 'Segoe UI, sans-serif',
+      color: 'white',
+      position: 'fixed', // Sayfanın en üstünde dursun
+      top: 0, left: 0, zIndex: 9999
+    }}>
+      <style>{`
+        .login-card {
+          background: #1e1e2e;
+          padding: 40px;
+          border-radius: 16px;
+          border: 1px solid #333;
+          box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+          width: 350px;
+          text-align: center;
+        }
+        .custom-input {
+          width: 100%; padding: 12px; margin-bottom: 15px;
+          background: #15151b; border: 1px solid #333; border-radius: 8px;
+          color: white; outline: none; box-sizing: border-box;
+        }
+        .custom-input:focus { border-color: #00d2ff; }
+        .login-btn {
+          width: 100%; padding: 12px;
+          background: linear-gradient(90deg, #00d2ff, #007aff);
+          border: none; border-radius: 8px; color: white;
+          font-weight: bold; cursor: pointer; margin-top: 10px;
+        }
+        .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .error-msg { color: #ff4d4d; font-size: 0.9rem; margin-bottom: 10px; }
+      `}</style>
+
+      <div className="login-card">
+        <h2 style={{ color: '#00d2ff', marginTop: 0 }}>PANEL GİRİŞ</h2>
+        <p style={{ color: '#666', fontSize: '0.8rem', marginBottom: '20px' }}>Admin yetkilendirmesi gerekli</p>
+        
+        {errorMsg && <div className="error-msg">{errorMsg}</div>}
+
+        <form onSubmit={handleLogin}>
+          <input 
+            type="text" 
+            className="custom-input" 
+            placeholder="Kullanıcı Adı (admin)"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <input 
+            type="password" 
+            className="custom-input" 
+            placeholder="Şifre (1234)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? 'KONTROL EDİLİYOR...' : 'GİRİŞ YAP'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default AdminLogin;

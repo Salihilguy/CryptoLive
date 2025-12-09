@@ -1,0 +1,31 @@
+{
+  "users": [
+    {
+      "username": "FUAT",
+      "password": "1453"
+    },
+    {
+      "username": "DEMİR",
+      "password": "3458"
+    }
+  ],
+  "favorites": {
+    "FUAT": [
+      "DOGEUSDT",
+      "DOTUSDT"
+    ],
+    "DEMİR": [
+      "SI=F"
+    ]
+  },
+  "alarms": [
+    {
+      "id": 1765276025100,
+      "username": "FUAT",
+      "symbol": "DOGEUSDT",
+      "targetPrice": 5.09,
+      "direction": "UP",
+      "note": ""
+    }
+  ]
+}
