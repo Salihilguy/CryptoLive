@@ -7,23 +7,31 @@
     {
       "username": "DEMİR",
       "password": "3458"
+    },
+    {
+      "username": "SALİH",
+      "password": "1834"
     }
   ],
   "favorites": {
     "FUAT": [
       "DOGEUSDT",
-      "DOTUSDT"
+      "DOTUSDT",
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
     ],
     "DEMİR": [
       "SI=F"
-    ]
+    ],
+    "SALİH": []
   },
   "alarms": [
     {
-      "id": 1765276025100,
+      "id": 1765281175097,
       "username": "FUAT",
-      "symbol": "DOGEUSDT",
-      "targetPrice": 5.09,
+      "symbol": "BTCUSDT",
+      "targetPrice": 150790.99500107332,
       "direction": "UP",
       "note": ""
     }

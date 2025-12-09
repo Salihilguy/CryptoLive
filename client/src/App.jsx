@@ -65,6 +65,11 @@ function App() {
   const [showUserAuth, setShowUserAuth] = useState(false); 
   const [favorites, setFavorites] = useState([]); 
 
+  // BİLDİRİM STATE'LERİ
+  const [notifications, setNotifications] = useState([]); 
+  const [showNotifPanel, setShowNotifPanel] = useState(false); 
+  const [unreadCount, setUnreadCount] = useState(0); 
+
   const [alarmModalOpen, setAlarmModalOpen] = useState(false);
   const [alarmCoin, setAlarmCoin] = useState(null);
   const [alarmTarget, setAlarmTarget] = useState('');
@@ -90,9 +95,6 @@ function App() {
   const [searchTerm, setSearchTerm] = useState(""); 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'default' }); 
   const [selectedCoin, setSelectedCoin] = useState(null); 
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [notifTitle, setNotifTitle] = useState("");
-  const [notifMsg, setNotifMsg] = useState("");
   const [isFullScreen, setIsFullScreen] = useState(false);
   
   const defaultSortOrder = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'TRXUSDT', 'DOTUSDT', 'MATICUSDT', 'LTCUSDT', 'LINKUSDT', 'SHIBUSDT', 'ATOMUSDT'];
@@ -119,8 +121,10 @@ function App() {
 
     socket.on("tickerUpdate", handleDataUpdate);
     socket.on("marketUpdate", handleDataUpdate);
+    
     socket.on('notification', (notif) => {
         if (notif.targetUser && currentUser && notif.targetUser !== currentUser.username) return;
+        
         let color = notif.type === 'success' ? '#00ff88' : '#00d2ff';
         const messageContent = (
             <div>
@@ -129,6 +133,18 @@ function App() {
             </div>
         );
         toast.info(messageContent, { position: "top-right", theme: "dark", autoClose: 8000 });
+
+        const newNotification = {
+            id: Date.now(),
+            title: notif.title,
+            message: notif.message,
+            time: new Date().toLocaleTimeString(),
+            type: notif.type
+        };
+        
+        setNotifications(prev => [newNotification, ...prev]); 
+        setUnreadCount(prev => prev + 1); 
+
         if (notif.type === 'success' && currentUser) fetchAlarms();
     });
 
@@ -141,7 +157,14 @@ function App() {
   }, []);
   
   useEffect(() => {
-       if (currentUser) { fetchAlarms(); } else { setMyAlarms([]); if (activeTab === 'ALARMS') setActiveTab('CRYPTO'); }
+       if (currentUser) { 
+           fetchAlarms(); 
+           // YENİ EKLENEN KISIM: Kullanıcı online bilgisini sunucuya gönder
+           socket.emit('user_connected', currentUser.username);
+       } else { 
+           setMyAlarms([]); 
+           if (activeTab === 'ALARMS') setActiveTab('CRYPTO'); 
+       }
    }, [currentUser]);
 
    const fetchAlarms = async () => {
@@ -153,7 +176,6 @@ function App() {
       }
   };
 
-  // --- ALARM SİLME FONKSİYONU ---
   const handleDeleteAlarm = async (alarmId) => {
       if(!currentUser) return;
       try {
@@ -163,7 +185,6 @@ function App() {
       } catch (e) { toast.error("Silme hatası"); }
   };
 
-  // --- FAVORİ EKLE/ÇIKAR VE OTO SİLME İŞLEMİ ---
   const handleToggleFavorite = async (e, symbol) => { 
       e.stopPropagation(); 
       if(!currentUser){
@@ -171,20 +192,13 @@ function App() {
           setShowUserAuth(true);
           return;
       } 
-      
-      // Önce bu coin şu an favorilerde mi kontrol et (yani siliniyor mu?)
       const isRemoving = favorites.includes(symbol);
-
       const res = await AuthService.toggleFavorite(currentUser.username, symbol); 
-      
       if(res.success) {
           setFavorites(res.favorites);
-          
-          // Eğer favorilerden çıkardıysak ve buna bağlı alarm varsa, alarmı da sil
           if (isRemoving) {
               const alarmToDelete = myAlarms.find(a => a.symbol === symbol);
               if (alarmToDelete) {
-                  // Alarm silme fonksiyonunu çağır (toast mesajı orada çıkar)
                   await handleDeleteAlarm(alarmToDelete.id);
               }
           }
@@ -194,7 +208,6 @@ function App() {
   const openNewAlarmModal = (e, coin) => {
       e.stopPropagation();
       if (!currentUser) { toast.warn("Giriş yapmalısın!"); setShowUserAuth(true); return; }
-      
       setEditingAlarmId(null);
       setAlarmCoin(coin);
       setAlarmTarget(coin.price); 
@@ -202,18 +215,11 @@ function App() {
       setAlarmModalOpen(true);
   };
 
-  // --- DÜZENLEME MODALI AÇMA ---
   const openEditAlarmModal = (alarm) => {
-      // Coin o anki listede olmayabilir, alarm verisinden kurtar
       let coin = coins.find(c => c.symbol === alarm.symbol);
       if (!coin) {
-          coin = { 
-              symbol: alarm.symbol, 
-              price: alarm.currentPrice || 0, 
-              name: alarm.symbol 
-          };
+          coin = { symbol: alarm.symbol, price: alarm.currentPrice || 0, name: alarm.symbol };
       }
-
       setEditingAlarmId(alarm.id);
       setAlarmCoin(coin);
       setAlarmTarget(alarm.targetPrice);
@@ -233,10 +239,25 @@ function App() {
               res = await AuthService.setAlarm(currentUser.username, alarmCoin.symbol, alarmTarget, alarmCoin.price, alarmMessage);
               toast.success("Alarm kuruldu!");
           }
-          
           setAlarmModalOpen(false);
           fetchAlarms(); 
       } catch (err) { toast.error("İşlem başarısız."); }
+  };
+
+  const toggleNotifPanel = () => {
+      setShowNotifPanel(!showNotifPanel);
+      if (!showNotifPanel) {
+          setUnreadCount(0); 
+      }
+  };
+
+  const clearNotifications = () => {
+      setNotifications([]);
+      setUnreadCount(0);
+  };
+
+  const deleteNotification = (id) => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
   useEffect(() => { if (!currentUser && activeTab === 'FAVORITES') { setActiveTab('CRYPTO'); setSelectedCoin('BTCUSDT'); } }, [currentUser, activeTab]);
@@ -260,36 +281,19 @@ function App() {
     if (bistMap[symbol]) return bistMap[symbol];
 
     const symbolMap = { 
-        'TRY=X': 'FX_IDC:USDTRY', 
-        'EURTRY=X': 'FX_IDC:EURTRY', 
-        'GBPTRY=X': 'FX_IDC:GBPTRY', 
-        'EURUSD=X': 'FX_IDC:EURUSD', 
-        'JPYTRY=X': 'FX_IDC:JPYTRY', 
-        'CHFTRY=X': 'FX_IDC:CHFTRY', 
-        'CADTRY=X': 'FX_IDC:CADTRY', 
-        'AUDTRY=X': 'FX_IDC:AUDTRY', 
-        'DX-Y.NYB': 'CAPITALCOM:DXY', 
-        
-        'CNYTRY=X': 'FX_IDC:USDTRY/FX_IDC:USDCNY', 
-        'RUBTRY=X': 'FX_IDC:USDTRY/FX_IDC:USDRUB',
-
+        'TRY=X': 'FX_IDC:USDTRY', 'EURTRY=X': 'FX_IDC:EURTRY', 'GBPTRY=X': 'FX_IDC:GBPTRY', 
+        'EURUSD=X': 'FX_IDC:EURUSD', 'JPYTRY=X': 'FX_IDC:JPYTRY', 'CHFTRY=X': 'FX_IDC:CHFTRY', 
+        'CADTRY=X': 'FX_IDC:CADTRY', 'AUDTRY=X': 'FX_IDC:AUDTRY', 'DX-Y.NYB': 'CAPITALCOM:DXY', 
+        'CNYTRY=X': 'FX_IDC:USDTRY/FX_IDC:USDCNY', 'RUBTRY=X': 'FX_IDC:USDTRY/FX_IDC:USDRUB',
         'GC=F': 'TVC:GOLD', 'SI=F': 'TVC:SILVER', 'CL=F': 'TVC:USOIL', 'BZ=F': 'TVC:UKOIL', 
         'HG=F': 'OANDA:XCUUSD', 'NG=F': 'CAPITALCOM:NATURALGAS',
-        
-        'GRAM-ALTIN':   'FX_IDC:XAUTRYG',       
-        'CEYREK-ALTIN': 'FX_IDC:XAUTRYG*1.635',  
-        'YARIM-ALTIN':  'FX_IDC:XAUTRYG*3.27',   
-        'TAM-ALTIN':    'FX_IDC:XAUTRYG*6.54',   
-        'GRAM-GUMUS':   'FX_IDC:XAGTRYG'       
+        'GRAM-ALTIN': 'FX_IDC:XAUTRYG', 'CEYREK-ALTIN': 'FX_IDC:XAUTRYG*1.635',  
+        'YARIM-ALTIN': 'FX_IDC:XAUTRYG*3.27', 'TAM-ALTIN': 'FX_IDC:XAUTRYG*6.54', 'GRAM-GUMUS': 'FX_IDC:XAGTRYG'       
     };
 
     if (symbolMap[symbol]) return symbolMap[symbol];
     if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
-    
-    if (symbol.endsWith('.IS')) {
-        return symbol.replace('.IS', '').trim();
-    }
-
+    if (symbol.endsWith('.IS')) return symbol.replace('.IS', '').trim();
     return symbol.replace('=X', '').replace('=F', '').replace('.NYB', '');
   };
 
@@ -334,7 +338,13 @@ function App() {
   return (
     <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box', overflowX:'hidden', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
-      {showAdminLogin && <div style={modalStyle}><div style={overlayStyle} onClick={()=>setShowAdminLogin(false)}></div><AdminLogin onLoginSuccess={()=>{setIsAdminLoggedIn(true);setShowAdminLogin(false)}} /></div>}
+      {showAdminLogin && (
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={()=>setShowAdminLogin(false)}></div>
+            <AdminLogin onLoginSuccess={()=>{setIsAdminLoggedIn(true);setShowAdminLogin(false)}} onClose={() => setShowAdminLogin(false)} />
+        </div>
+      )}
+
       {showUserAuth && <UserAuth onClose={()=>setShowUserAuth(false)} onSuccess={(u)=>{setCurrentUser(u);setFavorites(u.favorites);setShowUserAuth(false)}} />}
         
       {alarmModalOpen && (
@@ -353,16 +363,13 @@ function App() {
 
                   <form onSubmit={handleSetAlarm}>
                       <input type="number" step="any" placeholder="Hedef Fiyat" value={alarmTarget} onChange={e=>setAlarmTarget(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', fontSize:'1.1rem', textAlign:'center'}} />
-                      
                       <input type="text" placeholder="Notun (Opsiyonel)" value={alarmMessage} onChange={e=>setAlarmMessage(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'15px', background:'#15151b', border:'1px solid #333', color:'#ddd', borderRadius:'8px', fontSize:'0.9rem'}} />
-
                       <div style={{marginBottom:'20px', fontSize:'0.85rem', color:'#888'}}>
                           {parseFloat(alarmTarget) > alarmCoin?.price 
                             ? <span>Koşul: Fiyat <strong style={{color:'#00ff88'}}>YÜKSELİRSE</strong><br/>(Target &ge; Current)</span>
                             : <span>Koşul: Fiyat <strong style={{color:'#ff4d4d'}}>DÜŞERSE</strong><br/>(Target &le; Current)</span>
                           }
                       </div>
-
                       <div style={{display:'flex', gap:'10px'}}>
                           <button type="button" onClick={()=>setAlarmModalOpen(false)} style={{flex:1, background:'#333', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>İptal</button>
                           <button type="submit" style={{flex:1, background:'linear-gradient(90deg, #00d2ff, #007aff)', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>
@@ -373,7 +380,9 @@ function App() {
               </div>
           </div>
       )}
-     <style>{`
+
+      {/* STYLES */}
+      <style>{`
         .star-btn { background:none; border:none; color:#444; font-size:1.2rem; cursor:pointer; transition: color 0.2s; padding:0 5px; }
         .star-btn.active { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
         .star-btn:hover { color: #fff; }
@@ -391,10 +400,7 @@ function App() {
         .ticker-track { display: flex; animation: ticker-scroll 120s linear infinite; gap: 15px; padding-left: 20px; }
         @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
         .ticker-card { display: flex; align-items: center; background: rgba(37, 37, 48, 0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap; font-size: 0.85rem; }
-        .badge { padding: 2px 5px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
-        .badge.up { background: rgba(0, 255, 136, 0.1); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3); }
-        .badge.down { background: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid rgba(255, 77, 77, 0.3); }
-        .badge.neutral { background: rgba(136, 136, 136, 0.1); color: #aaa; border: 1px solid #555; }
+        .badge-count { background: #ff4d4d; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; position: absolute; top: -5px; right: -5px; border: 1px solid #1e1e2e; font-weight: bold; }
         @keyframes flashGreenPro { 0% { background-color: rgba(0, 255, 136, 0.25); color: #fff; } 100% { background-color: transparent; } }
         @keyframes flashRedPro { 0% { background-color: rgba(255, 77, 77, 0.25); color: #fff; } 100% { background-color: transparent; } }
       `}</style>
@@ -404,7 +410,48 @@ function App() {
       <div style={{ padding: '15px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ width: '100%', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding:'0 5px' }}>
               <h1 style={{ color: '#00d2ff', margin: 0, fontSize:'1.8rem', fontWeight:'800' }}>CryptoLive</h1> 
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                  
+                  {/* BİLDİRİM KUTUSU */}
+                  <div style={{position: 'relative'}}>
+                      <button onClick={toggleNotifPanel} style={{background: 'none', border: 'none', color: '#ccc', fontSize: '1.5rem', cursor: 'pointer', position:'relative'}}>
+                          🔔
+                          {unreadCount > 0 && <span className="badge-count">{unreadCount}</span>}
+                      </button>
+
+                      {/* BİLDİRİM PANELİ DROPDOWN */}
+                      {showNotifPanel && (
+                          <div style={{position: 'absolute', top: '40px', right: '-50px', width: '320px', background: '#1e1e2e', border: '1px solid #444', borderRadius: '12px', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', zIndex: 1000, overflow:'hidden'}}>
+                                <div style={{padding: '10px 15px', borderBottom: '1px solid #333', background: '#222', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <span style={{fontWeight: 'bold', fontSize: '0.9rem', color: '#eee'}}>Bildirimler</span>
+                                    {notifications.length > 0 && <button onClick={clearNotifications} style={{background: 'none', border: 'none', color: '#ff4d4d', fontSize: '0.8rem', cursor: 'pointer'}}>Temizle</button>}
+                                </div>
+                                <div style={{maxHeight: '350px', overflowY: 'auto'}}>
+                                    {notifications.length > 0 ? (
+                                        notifications.map(n => (
+                                            <div key={n.id} style={{padding: '12px 15px', borderBottom: '1px solid #2a2a35', fontSize: '0.85rem', position: 'relative'}}>
+                                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '4px'}}>
+                                                    <div style={{fontWeight: '700', color: n.type==='success'?'#00ff88':'#00d2ff'}}>{n.title}</div>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                                                        style={{background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1rem', padding: '0 5px', lineHeight: '1'}}
+                                                        title="Sil"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </div>
+                                                <div style={{color: '#ccc', marginBottom: '5px', paddingRight: '15px'}}>{n.message}</div>
+                                                <div style={{fontSize: '0.7rem', color: '#666', textAlign: 'right'}}>{n.time}</div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div style={{padding: '20px', textAlign: 'center', color: '#666', fontSize: '0.9rem'}}>Hiç bildirim yok.</div>
+                                    )}
+                                </div>
+                          </div>
+                      )}
+                  </div>
+
                   {currentUser ? (
                       <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#222', padding:'5px 15px', borderRadius:'20px', border:'1px solid #333'}}>
                           <span style={{color:'#00ff88', fontWeight:'bold', fontSize:'0.9rem'}}>👤 {currentUser.username}</span>
@@ -451,10 +498,28 @@ function App() {
                                     {myAlarms.map(alarm => {
                                         const currentCoin = coins.find(c => c.symbol === alarm.symbol);
                                         const currentPrice = currentCoin ? currentCoin.price : 0;
+                                        // İSİM VE LOGO BULMA
+                                        const coinInfo = coins.find(c => c.symbol === alarm.symbol);
+                                        const displayName = coinInfo ? coinInfo.name : alarm.symbol;
+                                        const displayLogo = coinInfo ? coinInfo.logo : null;
+
                                         return (
-                                            <tr key={alarm.id} style={{borderBottom:'1px solid #2a2a35'}}>
-                                                <td style={{padding:'10px 15px', fontWeight:'bold', color:'#eee'}}>{alarm.symbol}</td>
-                                                <td style={{padding:'10px', textAlign:'right', color:'#00d2ff', fontFamily:'Consolas'}}>{alarm.targetPrice}</td>
+                                            <tr 
+                                                key={alarm.id} 
+                                                onClick={() => setSelectedCoin(alarm.symbol)} // GRAFİK GÜNCELLEME
+                                                style={{
+                                                    borderBottom:'1px solid #2a2a35', 
+                                                    cursor: 'pointer', 
+                                                    background: selectedCoin === alarm.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent'
+                                                }}
+                                            >
+                                                <td style={{padding:'10px 15px', color:'#eee'}}>
+                                                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                                                        {displayLogo && <img src={displayLogo} width="24" style={{borderRadius:'50%'}} />}
+                                                        <div style={{fontWeight:'bold'}}>{displayName}</div>
+                                                    </div>
+                                                </td>
+                                                <td style={{padding:'10px', textAlign:'right', color:'#00d2ff', fontFamily:'Consolas'}}>{parseFloat(alarm.targetPrice).toFixed(2)}</td>
                                                 <td style={{padding:'10px', textAlign:'right', color:'#eee', fontFamily:'Consolas'}}>{currentPrice.toFixed(2)}</td>
                                                 <td style={{padding:'10px', textAlign:'center'}}>
                                                     {alarm.direction === 'UP' 
@@ -462,7 +527,6 @@ function App() {
                                                         : <span style={{color:'#ff4d4d', fontSize:'0.8rem', background:'rgba(255,77,77,0.1)', padding:'2px 6px', borderRadius:'4px'}}>▼ Düşüş</span>
                                                     }
                                                 </td>
-                                                {/* İŞLEM BUTONLARI */}
                                                 <td style={{padding:'10px', textAlign:'center', display:'flex', gap:'5px', justifyContent:'center'}}>
                                                     <button onClick={(e) => { e.stopPropagation(); openEditAlarmModal(alarm); }} style={{background:'#00d2ff', border:'none', borderRadius:'6px', color:'white', width:'30px', height:'30px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>✏️</button>
                                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteAlarm(alarm.id); }} style={{background:'#ff4d4d', border:'none', borderRadius:'6px', color:'white', width:'30px', height:'30px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>🗑️</button>

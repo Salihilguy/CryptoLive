@@ -3,7 +3,7 @@ import axios from 'axios';
 const API_URL = "http://localhost:3001/api";
 
 export const AuthService = {
-    // Admin Girişi
+    // --- AUTH İŞLEMLERİ ---
     adminLogin: async (username, password) => {
         try {
             const res = await axios.post(`${API_URL}/login`, { username, password });
@@ -13,7 +13,6 @@ export const AuthService = {
         }
     },
     
-    // Kullanıcı Kayıt
     register: async (username, password) => {
         try {
             const res = await axios.post(`${API_URL}/register`, { username, password });
@@ -23,7 +22,6 @@ export const AuthService = {
         }
     },
 
-    // Kullanıcı Giriş
     userLogin: async (username, password) => {
         try {
             const res = await axios.post(`${API_URL}/user-login`, { username, password });
@@ -33,7 +31,7 @@ export const AuthService = {
         }
     },
 
-    // Favori İşlemi
+    // --- FAVORİ İŞLEMLERİ ---
     toggleFavorite: async (username, symbol) => {
         try {
             const res = await axios.post(`${API_URL}/toggle-favorite`, { username, symbol });
@@ -44,7 +42,7 @@ export const AuthService = {
         }
     },
 
-    // Alarm Kurma (GÜNCELLENDİ: note parametresi eklendi)
+    // --- ALARM İŞLEMLERİ ---
     setAlarm: async (username, symbol, targetPrice, currentPrice, note = "") => {
         try {
             const res = await axios.post(`${API_URL}/set-alarm`, { 
@@ -52,7 +50,7 @@ export const AuthService = {
                 symbol, 
                 targetPrice, 
                 currentPrice,
-                note // <-- Yeni mesaj verisi buraya eklendi
+                note 
             });
             return res.data;
         } catch (error) {
@@ -60,7 +58,6 @@ export const AuthService = {
         }
     },
 
-    // Alarmları Listele
     getAlarms: async (username) => {
         try {
             const res = await axios.post(`${API_URL}/get-alarms`, { username });
@@ -71,7 +68,6 @@ export const AuthService = {
         }
     },
 
-    // Alarm Sil
     deleteAlarm: async (username, alarmId) => {
         try {
             const res = await axios.post(`${API_URL}/delete-alarm`, { username, alarmId });
@@ -81,7 +77,6 @@ export const AuthService = {
         }
     },
 
-    // Alarm Güncelle (GÜNCELLENDİ: note parametresi eklendi)
     updateAlarm: async (username, alarmId, newTargetPrice, currentPrice, note = "") => {
         try {
             const res = await axios.post(`${API_URL}/update-alarm`, { 
@@ -89,11 +84,54 @@ export const AuthService = {
                 alarmId, 
                 newTargetPrice, 
                 currentPrice,
-                note // <-- Yeni mesaj verisi buraya eklendi
+                note 
             });
             return res.data;
         } catch (error) {
             throw { message: 'Güncelleme hatası.' };
         }
+    },
+
+    // --- ADMIN İŞLEMLERİ ---
+    
+    adminGetUsers: async () => {
+        try {
+            const res = await axios.get(`${API_URL}/admin/users`);
+            return res.data;
+        } catch (error) {
+            console.error("Admin user fetch error", error);
+            return { users: [] };
+        }
+    },
+
+    adminDeleteUser: async (username) => {
+        try {
+            const res = await axios.post(`${API_URL}/admin/delete-user`, { username });
+            return res.data;
+        } catch (error) {
+            throw { message: 'Silme işlemi başarısız.' };
+        }
+    },
+
+    adminGetStats: async () => {
+        try {
+            const res = await axios.get(`${API_URL}/admin/stats`);
+            return res.data;
+        } catch (error) {
+            console.error("Stats fetch error", error);
+            return { totalUsers: 0, totalAlarms: 0, onlineCount: 0, uptime: '00:00:00' };
+        }
+    },
+
+    // YENİ EKLENEN: GLOBAL DUYURU GÖNDERME
+    adminSendBroadcast: async (title, message) => {
+        try {
+            // Type 'info' olarak varsayılan gönderiyoruz
+            const res = await axios.post(`${API_URL}/notification`, { title, message, type: 'info' });
+            return res.data;
+        } catch (error) {
+            throw { message: 'Duyuru gönderilemedi.' };
+        }
     }
+
 };

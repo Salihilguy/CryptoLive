@@ -18,6 +18,12 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 
 const DB_FILE = 'data.json';
 
+const START_TIME = Date.now(); // Sunucu başlangıç zamanı
+
+// ONLINE KULLANICILARI TAKİP ETMEK İÇİN MAP
+// SocketID -> Username
+const onlineUsers = new Map();
+
 const readDB = () => {
     try {
         if (!fs.existsSync(DB_FILE)) {
@@ -45,7 +51,7 @@ const writeDB = (data) => {
     }
 };
 
-// --- GÜNCELLENEN KISIM: Check Alarms (Notu Bildirime Ekleme) ---
+
 const checkAlarms = (marketData) => {
     const db = readDB();
     if (!db.alarms || db.alarms.length === 0) return; 
@@ -66,7 +72,7 @@ const checkAlarms = (marketData) => {
             if (isTriggered) {
                 console.log(`🔔 ALARM TETİKLENDİ: ${alarm.username} -> ${alarm.symbol} @ ${currentPrice}`);
                 
-                // NOTU BİLDİRİM MESAJINA EKLEME
+                
                 const userNote = alarm.note ? `\n📝 Notun: ${alarm.note}` : '';
 
                 io.emit('notification', {
@@ -77,10 +83,10 @@ const checkAlarms = (marketData) => {
                 });
                 
                 alarmTriggered = true;
-                return false; // Tetiklenen alarmı silmek için false dönüyoruz
+                return false; 
             }
         }
-        return true; // Tetiklenmeyenler kalsın
+        return true; 
     });
 
     if (alarmTriggered) {
@@ -89,6 +95,18 @@ const checkAlarms = (marketData) => {
     }
 };
 
+io.on('connection', (socket) => {
+    // Kullanıcı giriş yapınca "Ben Online'ım" der
+    socket.on('user_connected', (username) => {
+        onlineUsers.set(socket.id, username);
+        io.emit('online_count_update', onlineUsers.size); // Admin paneline anlık sayı gidebilir
+    });
+
+    socket.on('disconnect', () => {
+        onlineUsers.delete(socket.id);
+        io.emit('online_count_update', onlineUsers.size);
+    });
+});
 
 const COIN_METADATA = {
     'BTCUSDT': { name: 'Bitcoin', logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
@@ -289,7 +307,7 @@ function startFakeTickerService() {
             return { symbol, name: info.name, logo: info.logo, price: newPrice, change: changePercent * 100 };
         });
         io.emit('tickerUpdate', fakeData);
-        // Fake servis çalışırken de alarmları kontrol etmeliyiz
+        
         checkAlarms(fakeData); 
     }, 1000); 
 }
@@ -317,13 +335,65 @@ try {
                     };
                 });
                 io.emit('tickerUpdate', cleanData);
-                checkAlarms(cleanData); // Alarm kontrolünü burada çağırıyoruz
+                checkAlarms(cleanData); 
             }
         } catch (e) { console.error("Binance mesaj işleme hatası:", e);}
     });
 } catch (e) {console.error("Binance bağlanırken kritik hata:", e);}
 
 setTimeout(() => { if (!isBinanceWorking) startFakeTickerService(); }, 5000);
+
+app.get('/api/admin/users', (req, res) => {
+    const db = readDB();
+    // Map'teki value'ları (kullanıcı adlarını) bir diziye çevir
+    const activeUsernames = Array.from(onlineUsers.values());
+
+    const usersWithStatus = db.users.map(u => ({
+        username: u.username,
+        isOnline: activeUsernames.includes(u.username),
+        alarmCount: db.alarms.filter(a => a.username === u.username).length,
+        favCount: (db.favorites[u.username] || []).length
+    }));
+
+    res.json({ success: true, users: usersWithStatus });
+});
+
+// 2. Kullanıcı Silme
+app.post('/api/admin/delete-user', (req, res) => {
+    const { username } = req.body;
+    const db = readDB();
+    
+    // Kullanıcıyı sil
+    db.users = db.users.filter(u => u.username !== username);
+    // Favorilerini sil
+    delete db.favorites[username];
+    // Alarmlarını sil
+    db.alarms = db.alarms.filter(a => a.username !== username);
+
+    writeDB(db);
+    
+    // Eğer kullanıcı online ise onu sistemden at (Opsiyonel: soketini bulup disconnect edebilirsin ama şimdilik gerek yok)
+    res.json({ success: true, message: `${username} silindi.` });
+});
+
+// 3. Sunucu İstatistikleri
+app.get('/api/admin/stats', (req, res) => {
+    const db = readDB();
+    const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
+    
+    // Süreyi formatla (Saat:Dakika:Saniye)
+    const h = Math.floor(uptimeSeconds / 3600).toString().padStart(2,'0');
+    const m = Math.floor((uptimeSeconds % 3600) / 60).toString().padStart(2,'0');
+    const s = (uptimeSeconds % 60).toString().padStart(2,'0');
+
+    res.json({
+        success: true,
+        totalUsers: db.users.length,
+        totalAlarms: db.alarms.length,
+        onlineCount: onlineUsers.size,
+        uptime: `${h}:${m}:${s}`
+    });
+});
 
 app.post('/api/register', (req, res) => {
     const { username, password } = req.body;
@@ -363,16 +433,16 @@ app.post('/api/toggle-favorite', (req, res) => {
     res.json({ success: true, favorites: currentFavs });
 });
 
-// --- GÜNCELLENEN KISIM: Alarm Güncelleme (Notu Kaydetme) ---
+
 app.post('/api/update-alarm', (req, res) => {
-    const { username, alarmId, newTargetPrice, currentPrice, note } = req.body; // note eklendi
+    const { username, alarmId, newTargetPrice, currentPrice, note } = req.body; 
     const db = readDB();
 
     const alarmIndex = db.alarms.findIndex(a => a.id === alarmId && a.username === username);
     
     if (alarmIndex !== -1) {
         db.alarms[alarmIndex].targetPrice = parseFloat(newTargetPrice);
-        db.alarms[alarmIndex].note = note || ""; // Notu güncelle
+        db.alarms[alarmIndex].note = note || ""; 
         
         const direction = parseFloat(newTargetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
         db.alarms[alarmIndex].direction = direction;
@@ -402,9 +472,9 @@ app.post('/api/delete-alarm', (req, res) => {
     res.json({ success: true, message: 'Alarm silindi.' });
 });
 
-// --- GÜNCELLENEN KISIM: Alarm Kurma (Notu Kaydetme) ---
+
 app.post('/api/set-alarm', (req, res) => {
-    const { username, symbol, targetPrice, currentPrice, note } = req.body; // note eklendi
+    const { username, symbol, targetPrice, currentPrice, note } = req.body; 
     const db = readDB();
 
     const direction = parseFloat(targetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
@@ -415,7 +485,7 @@ app.post('/api/set-alarm', (req, res) => {
         symbol,
         targetPrice: parseFloat(targetPrice),
         direction,
-        note: note || "" // Notu kaydet
+        note: note || ""
     };
 
     db.alarms.push(newAlarm);
