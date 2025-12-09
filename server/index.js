@@ -18,12 +18,6 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 
 const DB_FILE = 'data.json';
 
-const START_TIME = Date.now(); // Sunucu başlangıç zamanı
-
-// ONLINE KULLANICILARI TAKİP ETMEK İÇİN MAP
-// SocketID -> Username
-const onlineUsers = new Map();
-
 const readDB = () => {
     try {
         if (!fs.existsSync(DB_FILE)) {
@@ -51,7 +45,6 @@ const writeDB = (data) => {
     }
 };
 
-
 const checkAlarms = (marketData) => {
     const db = readDB();
     if (!db.alarms || db.alarms.length === 0) return; 
@@ -72,7 +65,6 @@ const checkAlarms = (marketData) => {
             if (isTriggered) {
                 console.log(`🔔 ALARM TETİKLENDİ: ${alarm.username} -> ${alarm.symbol} @ ${currentPrice}`);
                 
-                
                 const userNote = alarm.note ? `\n📝 Notun: ${alarm.note}` : '';
 
                 io.emit('notification', {
@@ -86,7 +78,7 @@ const checkAlarms = (marketData) => {
                 return false; 
             }
         }
-        return true; 
+        return true;
     });
 
     if (alarmTriggered) {
@@ -95,18 +87,6 @@ const checkAlarms = (marketData) => {
     }
 };
 
-io.on('connection', (socket) => {
-    // Kullanıcı giriş yapınca "Ben Online'ım" der
-    socket.on('user_connected', (username) => {
-        onlineUsers.set(socket.id, username);
-        io.emit('online_count_update', onlineUsers.size); // Admin paneline anlık sayı gidebilir
-    });
-
-    socket.on('disconnect', () => {
-        onlineUsers.delete(socket.id);
-        io.emit('online_count_update', onlineUsers.size);
-    });
-});
 
 const COIN_METADATA = {
     'BTCUSDT': { name: 'Bitcoin', logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
@@ -131,23 +111,14 @@ const BASE_PRICES = { 'BTCUSDT': 96500, 'ETHUSDT': 3650, 'SOLUSDT': 240, 'BNBUSD
 
 const MARKET_ASSETS = [
     // BIST 100
-    { symbol: 'XU100.IS', name: 'BIST 100', type: 'BIST', logo: 'https://logo.clearbit.com/borsaistanbul.com' },
     { symbol: 'THYAO.IS', name: 'Türk Hava Yolları', type: 'BIST', logo: 'https://logo.clearbit.com/turkishairlines.com' },
-    { symbol: 'PGSUS.IS', name: 'Pegasus', type: 'BIST', logo: 'https://logo.clearbit.com/flypgs.com' },
+    { symbol: 'AKBNK.IS', name: 'Akbank', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=akbank.com&sz=128' },
+    { symbol: 'VAKBN.IS', name: 'Vakıfbank', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=vakifbank.com.tr&sz=128' },
     { symbol: 'TCELL.IS', name: 'Turkcell', type: 'BIST', logo: 'https://logo.clearbit.com/turkcell.com.tr' },
     { symbol: 'TTKOM.IS', name: 'Türk Telekom', type: 'BIST', logo: 'https://logo.clearbit.com/turktelekom.com.tr' },
-    { symbol: 'GARAN.IS', name: 'Garanti BBVA', type: 'BIST', logo: 'https://logo.clearbit.com/garantibbva.com.tr' },
-    { symbol: 'AKBNK.IS', name: 'Akbank', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=akbank.com&sz=128' },
-    { symbol: 'ISCTR.IS', name: 'İş Bankası', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=isbank.com.tr&sz=128' },
-    { symbol: 'YKBNK.IS', name: 'Yapı Kredi', type: 'BIST', logo: 'https://logo.clearbit.com/yapikredi.com.tr' },
-    { symbol: 'TUPRS.IS', name: 'Tüpraş', type: 'BIST', logo: 'https://logo.clearbit.com/tupras.com.tr' },
-    { symbol: 'ASELS.IS', name: 'Aselsan', type: 'BIST', logo: 'https://logo.clearbit.com/aselsan.com.tr' },
     { symbol: 'KCHOL.IS', name: 'Koç Holding', type: 'BIST', logo: 'https://logo.clearbit.com/koc.com.tr' },
-    { symbol: 'SAHOL.IS', name: 'Sabancı Holding', type: 'BIST', logo: 'https://logo.clearbit.com/sabanci.com' },
-    { symbol: 'EREGL.IS', name: 'Ereğli Demir Çelik', type: 'BIST', logo: 'https://logo.clearbit.com/erdemir.com.tr' },
-    { symbol: 'BIMAS.IS', name: 'BİM Mağazalar', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=bim.com.tr&sz=128' },
-    { symbol: 'SASA.IS', name: 'Sasa Polyester', type: 'BIST', logo: 'https://logo.clearbit.com/sasa.com.tr' },
-    { symbol: 'FROTO.IS', name: 'Ford Otosan', type: 'BIST', logo: 'https://logo.clearbit.com/fordotosan.com.tr' },
+    { symbol: 'SISE.IS', name: 'Şişecam', type: 'BIST', logo: '/sisecam.png' },
+    { symbol: 'BIMAS.IS', name: 'BİM', type: 'BIST', logo: 'https://www.google.com/s2/favicons?domain=bim.com.tr&sz=128' },
 
     // DÖVİZ & FOREX
     { symbol: 'USDTRY=X', name: 'USD / TRY', type: 'FOREX', logo: 'https://flagcdn.com/w80/us.png' }, 
@@ -307,7 +278,6 @@ function startFakeTickerService() {
             return { symbol, name: info.name, logo: info.logo, price: newPrice, change: changePercent * 100 };
         });
         io.emit('tickerUpdate', fakeData);
-        
         checkAlarms(fakeData); 
     }, 1000); 
 }
@@ -342,58 +312,6 @@ try {
 } catch (e) {console.error("Binance bağlanırken kritik hata:", e);}
 
 setTimeout(() => { if (!isBinanceWorking) startFakeTickerService(); }, 5000);
-
-app.get('/api/admin/users', (req, res) => {
-    const db = readDB();
-    // Map'teki value'ları (kullanıcı adlarını) bir diziye çevir
-    const activeUsernames = Array.from(onlineUsers.values());
-
-    const usersWithStatus = db.users.map(u => ({
-        username: u.username,
-        isOnline: activeUsernames.includes(u.username),
-        alarmCount: db.alarms.filter(a => a.username === u.username).length,
-        favCount: (db.favorites[u.username] || []).length
-    }));
-
-    res.json({ success: true, users: usersWithStatus });
-});
-
-// 2. Kullanıcı Silme
-app.post('/api/admin/delete-user', (req, res) => {
-    const { username } = req.body;
-    const db = readDB();
-    
-    // Kullanıcıyı sil
-    db.users = db.users.filter(u => u.username !== username);
-    // Favorilerini sil
-    delete db.favorites[username];
-    // Alarmlarını sil
-    db.alarms = db.alarms.filter(a => a.username !== username);
-
-    writeDB(db);
-    
-    // Eğer kullanıcı online ise onu sistemden at (Opsiyonel: soketini bulup disconnect edebilirsin ama şimdilik gerek yok)
-    res.json({ success: true, message: `${username} silindi.` });
-});
-
-// 3. Sunucu İstatistikleri
-app.get('/api/admin/stats', (req, res) => {
-    const db = readDB();
-    const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
-    
-    // Süreyi formatla (Saat:Dakika:Saniye)
-    const h = Math.floor(uptimeSeconds / 3600).toString().padStart(2,'0');
-    const m = Math.floor((uptimeSeconds % 3600) / 60).toString().padStart(2,'0');
-    const s = (uptimeSeconds % 60).toString().padStart(2,'0');
-
-    res.json({
-        success: true,
-        totalUsers: db.users.length,
-        totalAlarms: db.alarms.length,
-        onlineCount: onlineUsers.size,
-        uptime: `${h}:${m}:${s}`
-    });
-});
 
 app.post('/api/register', (req, res) => {
     const { username, password } = req.body;
@@ -433,7 +351,6 @@ app.post('/api/toggle-favorite', (req, res) => {
     res.json({ success: true, favorites: currentFavs });
 });
 
-
 app.post('/api/update-alarm', (req, res) => {
     const { username, alarmId, newTargetPrice, currentPrice, note } = req.body; 
     const db = readDB();
@@ -472,7 +389,6 @@ app.post('/api/delete-alarm', (req, res) => {
     res.json({ success: true, message: 'Alarm silindi.' });
 });
 
-
 app.post('/api/set-alarm', (req, res) => {
     const { username, symbol, targetPrice, currentPrice, note } = req.body; 
     const db = readDB();
@@ -485,7 +401,7 @@ app.post('/api/set-alarm', (req, res) => {
         symbol,
         targetPrice: parseFloat(targetPrice),
         direction,
-        note: note || ""
+        note: note || "" 
     };
 
     db.alarms.push(newAlarm);
