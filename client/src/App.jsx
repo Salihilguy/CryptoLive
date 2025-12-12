@@ -4,8 +4,6 @@ import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import TradingViewWidget from './TradingViewWidget';
-import AdminLogin from './pages/admin'; 
-import AdminPanel from './pages/AdminPanel'; 
 import UserAuth from './pages/UserAuth'; 
 import { AuthService } from './services/api';
 
@@ -59,13 +57,11 @@ const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'ri
 };
 
 function App() {
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false); 
-  const [showAdminLogin, setShowAdminLogin] = useState(false); 
+  const [showProfileModal, setShowProfileModal] = useState(false); 
   const [currentUser, setCurrentUser] = useState(null); 
   const [showUserAuth, setShowUserAuth] = useState(false); 
   const [favorites, setFavorites] = useState([]); 
 
-  // BİLDİRİM STATE'LERİ
   const [notifications, setNotifications] = useState([]); 
   const [showNotifPanel, setShowNotifPanel] = useState(false); 
   const [unreadCount, setUnreadCount] = useState(0); 
@@ -125,21 +121,55 @@ function App() {
     socket.on('notification', (notif) => {
         if (notif.targetUser && currentUser && notif.targetUser !== currentUser.username) return;
         
-        let color = notif.type === 'success' ? '#00ff88' : '#00d2ff';
-        const messageContent = (
+        let finalColor = '#00d2ff';
+
+        if (notif.type === 'error') {
+            finalColor = '#ff4d4d';
+        } else if (notif.type === 'success') {
+            finalColor = '#00ff88';
+        }
+
+        const CustomToastContent = () => (
             <div>
-                <strong style={{color: color}}>{notif.title}</strong>
-                <div>{notif.message}</div>
+                <span style={{ 
+                    color: finalColor, 
+                    fontWeight: '800', 
+                    fontSize: '1rem', 
+                    display: 'block', 
+                    marginBottom: '4px' 
+                }}>
+                    {notif.title}
+                </span>
+                <span style={{ 
+                    color: '#e0e0e0', 
+                    fontSize: '0.9rem',
+                    lineHeight: '1.4'
+                }}>
+                    {notif.message}
+                </span>
             </div>
         );
-        toast.info(messageContent, { position: "top-right", theme: "dark", autoClose: 8000 });
+        
+        const options = { 
+            position: "top-right", 
+            theme: "dark", 
+            autoClose: 8000
+        };
+
+        if (notif.type === 'error') {
+            toast.error(CustomToastContent, options); 
+        } else if (notif.type === 'success') {
+            toast.success(CustomToastContent, options);
+        } else {
+            toast.info(CustomToastContent, options); 
+        }
 
         const newNotification = {
             id: Date.now(),
             title: notif.title,
             message: notif.message,
             time: new Date().toLocaleTimeString(),
-            type: notif.type
+            type: notif.type 
         };
         
         setNotifications(prev => [newNotification, ...prev]); 
@@ -159,7 +189,6 @@ function App() {
   useEffect(() => {
        if (currentUser) { 
            fetchAlarms(); 
-           // YENİ EKLENEN KISIM: Kullanıcı online bilgisini sunucuya gönder
            socket.emit('user_connected', currentUser.username);
        } else { 
            setMyAlarms([]); 
@@ -227,6 +256,24 @@ function App() {
       setAlarmModalOpen(true);
   };
 
+    const handleLogout = async () => {
+        if (currentUser) {
+            try {
+                await AuthService.logout(currentUser.username);
+            } catch (error) {
+                console.error("Çıkış hatası:", error);
+            }
+        }
+
+        setCurrentUser(null);
+        setFavorites([]);
+        setMyAlarms([]);
+        setSelectedCoin('BTCUSDT');
+        setActiveTab('CRYPTO');
+      
+        toast.info("Başarıyla çıkış yapıldı", { position: "top-right", theme: "dark" });
+    };
+
   const handleSetAlarm = async (e) => {
       e.preventDefault();
       if (!alarmCoin || !alarmTarget) return;
@@ -272,11 +319,8 @@ function App() {
     if (specialMap[symbol]) return specialMap[symbol];
 
     const bistMap = {
-        'XU100.IS': 'XU100', 'THYAO.IS': 'THYAO', 'GARAN.IS': 'GARAN', 'AKBNK.IS': 'AKBNK',
-        'ISCTR.IS': 'ISCTR', 'YKBNK.IS': 'YKBNK', 'TUPRS.IS': 'TUPRS', 'ASELS.IS': 'ASELS',
-        'KCHOL.IS': 'KCHOL', 'SAHOL.IS': 'SAHOL', 'EREGL.IS': 'EREGL', 'BIMAS.IS': 'BIMAS',
-        'SASA.IS':  'SASA',  'FROTO.IS': 'FROTO', 'PGSUS.IS': 'PGSUS', 'TCELL.IS': 'TCELL',
-        'TTKOM.IS': 'TTKOM'
+        'THYAO.IS': 'THYAO', 'AKBNK.IS': 'AKBNK', 'KCHOL.IS': 'KCHOL', 
+        'BIMAS.IS': 'BIMAS', 'TCELL.IS': 'TCELL', 'TTKOM.IS': 'TTKOM'
     };
     if (bistMap[symbol]) return bistMap[symbol];
 
@@ -332,22 +376,26 @@ function App() {
     if (sortConfig.key === key && sortConfig.direction === 'descending') direction = 'ascending';
     setSortConfig({ key, direction });
   };
-  
-  if (isAdminLoggedIn) return <><ToastContainer /><AdminPanel onLogout={() => setIsAdminLoggedIn(false)} /></>;
 
   return (
     <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box', overflowX:'hidden', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
-      {showAdminLogin && (
-        <div style={modalStyle}>
-            <div style={overlayStyle} onClick={()=>setShowAdminLogin(false)}></div>
-            <AdminLogin onLoginSuccess={()=>{setIsAdminLoggedIn(true);setShowAdminLogin(false)}} onClose={() => setShowAdminLogin(false)} />
-        </div>
-      )}
 
       {showUserAuth && <UserAuth onClose={()=>setShowUserAuth(false)} onSuccess={(u)=>{setCurrentUser(u);setFavorites(u.favorites);setShowUserAuth(false)}} />}
+    
+        {showProfileModal && currentUser && (
+            <ProfileModal 
+                user={currentUser} 
+                onClose={() => setShowProfileModal(false)} 
+                onUpdateSuccess={(updatedUser) => {
+                    setCurrentUser({...currentUser, username: updatedUser.username});
+                    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+                    localStorage.setItem('user', JSON.stringify({...storedUser, username: updatedUser.username}));
+                }}
+            />
+        )}
         
-      {alarmModalOpen && (
+            {alarmModalOpen && (
           <div style={modalStyle}>
               <div style={overlayStyle} onClick={() => setAlarmModalOpen(false)}></div>
               <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '320px', zIndex: 10001, position:'relative', textAlign:'center' }}>
@@ -381,7 +429,6 @@ function App() {
           </div>
       )}
 
-      {/* STYLES */}
       <style>{`
         .star-btn { background:none; border:none; color:#444; font-size:1.2rem; cursor:pointer; transition: color 0.2s; padding:0 5px; }
         .star-btn.active { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
@@ -431,7 +478,9 @@ function App() {
                                         notifications.map(n => (
                                             <div key={n.id} style={{padding: '12px 15px', borderBottom: '1px solid #2a2a35', fontSize: '0.85rem', position: 'relative'}}>
                                                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '4px'}}>
-                                                    <div style={{fontWeight: '700', color: n.type==='success'?'#00ff88':'#00d2ff'}}>{n.title}</div>
+                                                    <div style={{fontWeight: '700', color: n.type === 'success' ? '#00ff88' : (n.type === 'error' ? '#ff4d4d' : '#00d2ff')}}>
+                                                    {n.title}
+                                                    </div>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
                                                         style={{background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1rem', padding: '0 5px', lineHeight: '1'}}
@@ -454,11 +503,16 @@ function App() {
 
                   {currentUser ? (
                       <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#222', padding:'5px 15px', borderRadius:'20px', border:'1px solid #333'}}>
-                          <span style={{color:'#00ff88', fontWeight:'bold', fontSize:'0.9rem'}}>👤 {currentUser.username}</span>
-                          <button onClick={() => { setCurrentUser(null); setFavorites([]); setMyAlarms([]); setSelectedCoin('BTCUSDT'); setActiveTab('CRYPTO'); toast.info("Çıkış yapıldı"); }} style={{background:'#333', border:'none', color:'#bbb', cursor:'pointer', fontSize:'0.8rem'}}>Çıkış</button>
+                        <button 
+                            onClick={() => setShowProfileModal(true)} 
+                            style={{background:'none', border:'none', color:'#00ff88', fontWeight:'bold', fontSize:'0.9rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px'}}
+                            title="Profili Düzenle"
+                        >
+                            👤 {currentUser.username} <span style={{fontSize:'0.7rem', color:'#888'}}>⚙️</span>
+                        </button>
+                          <button onClick={handleLogout} style={{background:'#333', border:'none', color:'#bbb', cursor:'pointer', fontSize:'0.8rem'}}>Çıkış</button>
                       </div>
                   ) : ( <button onClick={() => setShowUserAuth(true)} style={{ background: '#222', border: '1px solid #444', padding: '8px 20px', borderRadius: '20px', fontWeight: '600', fontSize:'0.9rem', cursor:'pointer', color:'#eee' }}>Üye Girişi / Kayıt</button> )}
-                  <button onClick={() => setShowAdminLogin(true)} style={{ background: 'linear-gradient(45deg, #00d2ff, #007aff)', border: 'none', padding: '8px 20px', borderRadius: '20px', fontWeight: '700', fontSize:'0.9rem', cursor:'pointer', color:'white' }}>Admin</button>
               </div>
           </div>
 
@@ -498,7 +552,6 @@ function App() {
                                     {myAlarms.map(alarm => {
                                         const currentCoin = coins.find(c => c.symbol === alarm.symbol);
                                         const currentPrice = currentCoin ? currentCoin.price : 0;
-                                        // İSİM VE LOGO BULMA
                                         const coinInfo = coins.find(c => c.symbol === alarm.symbol);
                                         const displayName = coinInfo ? coinInfo.name : alarm.symbol;
                                         const displayLogo = coinInfo ? coinInfo.logo : null;
@@ -506,7 +559,7 @@ function App() {
                                         return (
                                             <tr 
                                                 key={alarm.id} 
-                                                onClick={() => setSelectedCoin(alarm.symbol)} // GRAFİK GÜNCELLEME
+                                                onClick={() => setSelectedCoin(alarm.symbol)}
                                                 style={{
                                                     borderBottom:'1px solid #2a2a35', 
                                                     cursor: 'pointer', 
@@ -539,7 +592,6 @@ function App() {
                         </div>
                       </>
                   ) : (
-                      // STANDART COIN TABLOSU
                       <>
                         <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                             <h3 style={{margin:0, fontSize:'1rem', fontWeight:'700', color:'#eee'}}>{markets.find(m => m.id === activeTab)?.label}</h3>
@@ -603,5 +655,83 @@ function App() {
 
 const modalStyle = {position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:10000, display:'flex', justifyContent:'center', alignItems:'center'};
 const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.8)'};
+
+const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
+    const [currentPass, setCurrentPass] = useState('');
+    const [newPass, setNewPass] = useState('');
+    const [newUsername, setNewUsername] = useState(user.username);
+    const [loading, setLoading] = useState(false);
+
+    const handleUpdate = async (e) => {
+        e.preventDefault();
+        if (!currentPass) {
+            toast.warn("İşlem yapmak için mevcut şifrenizi girmelisiniz.");
+            return;
+        }
+        setLoading(true);
+        try {
+            const res = await AuthService.updateProfile(user.username, currentPass, newPass, newUsername);
+            toast.success(res.message);
+            if (res.user) {
+                onUpdateSuccess(res.user); 
+            }
+            onClose(); 
+        } catch (err) {
+            toast.error(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={onClose}></div>
+            <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '300px', zIndex: 10001, position:'relative' }}>
+                <h3 style={{color:'#00d2ff', marginTop:0, textAlign:'center'}}>Profil Ayarları</h3>
+                
+                <form onSubmit={handleUpdate}>
+                    {/* KULLANICI ADI */}
+                    <div style={{marginBottom:'15px'}}>
+                        <label style={{color:'#888', fontSize:'0.8rem', display:'block', marginBottom:'5px'}}>Kullanıcı Adı</label>
+                        <input 
+                            type="text" 
+                            value={newUsername} 
+                            onChange={e=>setNewUsername(e.target.value)} 
+                            style={{width:'100%', padding:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', boxSizing:'border-box', fontWeight:'bold'}} 
+                        />
+                    </div>
+
+                    <div style={{marginBottom:'15px'}}>
+                        <label style={{color:'#ff4d4d', fontSize:'0.8rem', display:'block', marginBottom:'5px'}}>Mevcut Şifre <span style={{fontSize:'0.7rem'}}>(Onay için gerekli)</span></label>
+                        <input 
+                            type="password" 
+                            value={currentPass} 
+                            onChange={e=>setCurrentPass(e.target.value)} 
+                            style={{width:'100%', padding:'10px', background:'#2a1a1a', border:'1px solid #ff4d4d', color:'white', borderRadius:'8px', boxSizing:'border-box'}} 
+                            required
+                        />
+                    </div>
+
+                    <div style={{marginBottom:'20px'}}>
+                        <label style={{color:'#888', fontSize:'0.8rem', display:'block', marginBottom:'5px'}}>Yeni Şifre <span style={{fontSize:'0.7rem'}}>(Değişmeyecekse boş bırak)</span></label>
+                        <input 
+                            type="password" 
+                            value={newPass} 
+                            onChange={e=>setNewPass(e.target.value)} 
+                            placeholder="Yeni şifreyi buraya girin"
+                            style={{width:'100%', padding:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', boxSizing:'border-box'}} 
+                        />
+                    </div>
+
+                    <button type="submit" disabled={loading} style={{width:'100%', padding:'10px', background:'linear-gradient(90deg, #00d2ff, #007aff)', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>
+                        {loading ? 'Güncelleniyor...' : 'Değişiklikleri Kaydet'}
+                    </button>
+                </form>
+                
+                <button onClick={onClose} style={{width:'100%', marginTop:'10px', background:'transparent', color:'#666', border:'none', cursor:'pointer', fontSize:'0.8rem'}}>İptal</button>
+            </div>
+        </div>
+    );
+};
 
 export default App;

@@ -31,6 +31,29 @@ export const AuthService = {
         }
     },
 
+    logout: async (username) => {
+        try {
+            await axios.post(`${API_URL}/logout`, { username });
+        } catch (error) {
+            console.error("Çıkış hatası:", error);
+        }
+    },
+
+
+    updateProfile: async (username, currentPassword, newPassword, newUsername) => {
+        try {
+            const res = await axios.post(`${API_URL}/update-profile`, { 
+                username, 
+                currentPassword, 
+                newPassword,
+                newUsername
+            });
+            return res.data;
+        } catch (error) {
+            throw { message: error.response?.data?.message || 'Güncelleme hatası' };
+        }
+    },
+
     // --- FAVORİ İŞLEMLERİ ---
     toggleFavorite: async (username, symbol) => {
         try {
@@ -93,7 +116,6 @@ export const AuthService = {
     },
 
     // --- ADMIN İŞLEMLERİ ---
-    
     adminGetUsers: async () => {
         try {
             const res = await axios.get(`${API_URL}/admin/users`);
@@ -123,10 +145,8 @@ export const AuthService = {
         }
     },
 
-    // YENİ EKLENEN: GLOBAL DUYURU GÖNDERME
     adminSendBroadcast: async (title, message) => {
         try {
-            // Type 'info' olarak varsayılan gönderiyoruz
             const res = await axios.post(`${API_URL}/notification`, { title, message, type: 'info' });
             return res.data;
         } catch (error) {
