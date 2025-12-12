@@ -51,5 +51,39 @@ export const AuthService = {
         } catch (error) {
             throw { message: 'Duyuru gönderilemedi.' };
         }
+    },
+
+    adminGetSupportMessages: async () => {
+        try {
+            const res = await axios.get(`${API_URL}/admin/support`);
+            return res.data;
+        } catch (error) { return { messages: [] }; }
+    },
+
+    adminDeleteSupportMessage: async (id) => {
+        try {
+            await axios.post(`${API_URL}/admin/delete-support`, { id });
+        } catch (error) { console.error(error); }
+    },
+
+    adminReplyToUser: async (targetUser, message) => {
+        try {
+            await axios.post(`${API_URL}/notification`, { 
+                title: 'Destek Yanıtı', 
+                message: message, 
+                type: 'info', 
+                targetUser: targetUser 
+            });
+        } catch (error) {
+            throw { message: 'Yanıt gönderilemedi.' };
+        }
+    },
+
+    adminReplySupport: async (id, username, replyMessage) => {
+        try {
+            await axios.post(`${API_URL}/admin/reply-support`, { id, username, replyMessage });
+        } catch (error) {
+            throw { message: 'Yanıt gönderilemedi.' };
+        }
     }
 };

@@ -6,16 +6,19 @@ const AdminPanel = ({ onLogout }) => {
     const [stats, setStats] = useState({ totalUsers: 0, totalAlarms: 0, onlineCount: 0, uptime: '00:00:00' });
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
-
+    const [showMessages, setShowMessages] = useState(false);
+    const [supportMessages, setSupportMessages] = useState([]);
     const [broadcastTitle, setBroadcastTitle] = useState('');
     const [broadcastMsg, setBroadcastMsg] = useState('');
     const [broadcastType, setBroadcastType] = useState('info');
+    const [replyTexts, setReplyTexts] = useState({});
 
     const fetchData = async () => {
         try {
             const statsRes = await AuthService.adminGetStats();
             const usersRes = await AuthService.adminGetUsers();
-            
+            const msgsRes = await AuthService.adminGetSupportMessages();
+            if (msgsRes.messages) setSupportMessages(msgsRes.messages);
             if (statsRes) setStats(statsRes);
             if (usersRes.success) setUsers(usersRes.users);
         } catch (error) {
@@ -84,6 +87,9 @@ const AdminPanel = ({ onLogout }) => {
                     <h1 style={{ margin: 0, color: '#00d2ff', fontSize: '1.4rem' }}>🛡️ Admin Kontrol Merkezi</h1>
                 </div>
                 
+                <button onClick={() => setShowMessages(!showMessages)} style={{marginRight:'10px', background:'#2a2a35', color:'white', border:'1px solid #444', padding:'8px 15px', borderRadius:'6px', cursor:'pointer'}}>
+                    💬 Mesajlar ({supportMessages.length})
+                </button>
                 <button 
                     onClick={onLogout} 
                     style={{ 
@@ -207,6 +213,115 @@ const AdminPanel = ({ onLogout }) => {
                     </div>
                 </div>
             </div>
+
+            {/* DESTEK MESAJLARI MODALI */}
+            {showMessages && (
+                <div style={{position:'fixed', top:'80px', right:'30px', width:'450px', maxHeight:'600px', background:'#1e1e2e', border:'1px solid #444', borderRadius:'12px', boxShadow:'0 10px 30px rgba(0,0,0,0.5)', overflowY:'auto', zIndex:1000, display:'flex', flexDirection:'column'}}>
+                    
+                    {/* Başlık */}
+                    <div style={{padding:'15px', background:'#15151b', borderBottom:'1px solid #333', display:'flex', justifyContent:'space-between', alignItems:'center', position:'sticky', top:0, zIndex:10}}>
+                        <h3 style={{margin:0, color:'#00ff88', fontSize:'1rem'}}>💬 Gelen Kutusu</h3>
+                        <button onClick={()=>setShowMessages(false)} style={{background:'none', border:'none', color:'#aaa', cursor:'pointer', fontSize:'1.2rem'}}>✕</button>
+                    </div>
+                    
+                    <div style={{padding:'20px'}}>
+                        {supportMessages.length === 0 ? <p style={{color:'#666', textAlign:'center'}}>Hiç mesaj yok.</p> : supportMessages.map(msg => (
+                            <div key={msg.id} style={{background:'#13131a', borderRadius:'8px', marginBottom:'20px', border:'1px solid #333', overflow:'hidden'}}>
+                                
+                                {/* KULLANICI MESAJI */}
+                                <div style={{padding:'15px', borderBottom:'1px solid #2a2a35'}}>
+                                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.75rem', color:'#888', marginBottom:'5px'}}>
+                                        <span style={{color:'#00d2ff', fontWeight:'bold'}}>👤 {msg.username}</span>
+                                        <span>{msg.date}</span>
+                                    </div>
+                                    <div style={{fontWeight:'bold', color:'white', marginBottom:'5px', fontSize:'0.95rem'}}>{msg.subject}</div>
+                                    <div style={{color:'#ccc', fontSize:'0.9rem', lineHeight:'1.4'}}>{msg.message}</div>
+                                </div>
+
+                                {/* GEÇMİŞ YANITLAR */}
+                                {msg.replies && msg.replies.length > 0 && (
+                                    <div style={{background:'#1a1a20', padding:'10px 15px', borderBottom:'1px solid #2a2a35'}}>
+                                        <div style={{fontSize:'0.7rem', color:'#666', marginBottom:'5px'}}>GEÇMİŞ YANITLAR:</div>
+                                        {msg.replies.map((reply, idx) => (
+                                            <div key={idx} style={{textAlign:'right', marginBottom:'8px'}}>
+                                                <div style={{background:'#004d40', color:'#e0f2f1', padding:'6px 10px', borderRadius:'6px 0 6px 6px', display:'inline-block', fontSize:'0.85rem'}}>
+                                                    {reply.text}
+                                                </div>
+                                                <div style={{fontSize:'0.65rem', color:'#555', marginTop:'2px'}}>{reply.date}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* YANITLAMA KUTUSU */}
+                                <div style={{padding:'10px', background:'#222'}}>
+                                    <textarea 
+                                        rows="2"
+                                        placeholder="Yanıtınızı buraya yazın..."
+                                        value={replyTexts[msg.id] || ''}
+                                        onChange={(e) => setReplyTexts({ ...replyTexts, [msg.id]: e.target.value })}
+                                        style={{
+                                            width:'100%', 
+                                            background:'#15151b', 
+                                            border:'1px solid #444', 
+                                            color:'white', 
+                                            padding:'8px', 
+                                            borderRadius:'6px', 
+                                            fontSize:'0.9rem', 
+                                            resize:'none',
+                                            boxSizing:'border-box',
+                                            marginBottom:'5px'
+                                        }}
+                                    />
+                                    <div style={{display:'flex', justifyContent:'space-between'}}>
+                                        <button 
+                                            onClick={async () => {
+                                                if(window.confirm('Bu mesajı ve geçmişini silmek istediğine emin misin?')) {
+                                                    await AuthService.adminDeleteSupportMessage(msg.id);
+                                                    fetchData(); 
+                                                }
+                                            }} 
+                                            style={{background:'transparent', border:'none', color:'#ff4d4d', fontSize:'0.8rem', cursor:'pointer'}}
+                                        >
+                                            🗑️ Sil
+                                        </button>
+
+                                        <button 
+                                            onClick={async () => {
+                                                const text = replyTexts[msg.id];
+                                                if (!text) return toast.warn("Yanıt boş olamaz.");
+                                                
+                                                try {
+                                                    await AuthService.adminReplySupport(msg.id, msg.username, text);
+                                                    toast.success("Yanıt gönderildi!");
+                                                    setReplyTexts({ ...replyTexts, [msg.id]: '' });
+                                                    fetchData();
+                                                } catch (err) {
+                                                    toast.error("Hata oluştu.");
+                                                }
+                                            }} 
+                                            style={{
+                                                background: replyTexts[msg.id] ? '#00ff88' : '#444', 
+                                                color: replyTexts[msg.id] ? '#000' : '#888', 
+                                                border:'none', 
+                                                padding:'5px 15px', 
+                                                borderRadius:'4px', 
+                                                cursor: replyTexts[msg.id] ? 'pointer' : 'not-allowed',
+                                                fontWeight:'bold',
+                                                fontSize:'0.85rem'
+                                            }}
+                                            disabled={!replyTexts[msg.id]}
+                                        >
+                                            Gönder ➜
+                                        </button>
+                                    </div>
+                                </div>
+
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

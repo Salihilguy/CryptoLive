@@ -54,6 +54,15 @@ export const AuthService = {
         }
     },
 
+    deleteAccount: async (username, password) => {
+        try {
+            const res = await axios.post(`${API_URL}/delete-my-account`, { username, password });
+            return res.data;
+        } catch (error) {
+            throw { message: error.response?.data?.message || 'Silme hatası' };
+        }
+    },
+
     // --- FAVORİ İŞLEMLERİ ---
     toggleFavorite: async (username, symbol) => {
         try {
@@ -151,6 +160,14 @@ export const AuthService = {
             return res.data;
         } catch (error) {
             throw { message: 'Duyuru gönderilemedi.' };
+        }
+    },
+    sendSupport: async (username, subject, message) => {
+        try {
+            const res = await axios.post(`${API_URL}/support`, { username, subject, message });
+            return res.data;
+        } catch (error) {
+            throw { message: 'Mesaj gönderilemedi.' };
         }
     }
 
