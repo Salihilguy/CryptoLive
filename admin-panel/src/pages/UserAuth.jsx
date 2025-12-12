@@ -79,7 +79,7 @@ const UserAuth = () => {
                 </form>
 
                 <div style={{marginTop:'20px', textAlign:'center', fontSize:'0.8rem', color:'#666'}}>
-                    CryptoLive Yönetim Sistemi © 2024
+                    CryptoLive Yönetim Sistemi © 2025
                 </div>
             </div>
         </div>

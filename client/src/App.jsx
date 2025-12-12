@@ -119,55 +119,55 @@ function App() {
     socket.on("marketUpdate", handleDataUpdate);
     
     socket.on('notification', (notif) => {
-        if (notif.targetUser && currentUser && notif.targetUser !== currentUser.username) return;
+
+        if (notif.targetUser) {
+            if (!currentUser || currentUser.username !== notif.targetUser) {
+                return;
+            }
+        }
         
         let finalColor = '#00d2ff';
 
-        if (notif.type === 'error') {
-            finalColor = '#ff4d4d';
-        } else if (notif.type === 'success') {
-            finalColor = '#00ff88';
-        }
+        if (notif.type === 'error') finalColor = '#ff4d4d';
+        else if (notif.type === 'success') finalColor = '#00ff88';
+        else if (notif.type === 'support_reply') finalColor = '#e0aaff'; 
 
         const CustomToastContent = () => (
             <div>
-                <span style={{ 
-                    color: finalColor, 
-                    fontWeight: '800', 
-                    fontSize: '1rem', 
-                    display: 'block', 
-                    marginBottom: '4px' 
-                }}>
+                <span style={{ color: finalColor, fontWeight: '800', fontSize: '1rem', display: 'block', marginBottom: '6px' }}>
                     {notif.title}
                 </span>
-                <span style={{ 
-                    color: '#e0e0e0', 
-                    fontSize: '0.9rem',
-                    lineHeight: '1.4'
-                }}>
-                    {notif.message}
-                </span>
+
+                {notif.originalMessage ? (
+                    <div style={{fontSize:'0.9rem'}}>
+                        <div style={{background:'rgba(255,255,255,0.1)', padding:'6px', borderRadius:'4px', marginBottom:'6px', color:'#aaa', fontStyle:'italic'}}>
+                            <span style={{fontSize:'0.7rem', display:'block', color:'#888'}}>Siz:</span>
+                            "{notif.originalMessage}"
+                        </div>
+                        <div style={{color:'#fff', paddingLeft:'4px', borderLeft:`2px solid ${finalColor}`}}>
+                            <span style={{fontSize:'0.7rem', display:'block', color: finalColor}}>CryptoLive Ekibi:</span>
+                            {notif.message}
+                        </div>
+                    </div>
+                ) : (
+                    <span style={{ color: '#e0e0e0', fontSize: '0.9rem', lineHeight: '1.4' }}>
+                        {notif.message}
+                    </span>
+                )}
             </div>
         );
-        
-        const options = { 
-            position: "top-right", 
-            theme: "dark", 
-            autoClose: 8000
-        };
 
-        if (notif.type === 'error') {
-            toast.error(CustomToastContent, options); 
-        } else if (notif.type === 'success') {
-            toast.success(CustomToastContent, options);
-        } else {
-            toast.info(CustomToastContent, options); 
-        }
+        const options = { position: "top-right", theme: "dark", autoClose: 10000 };
+
+        if (notif.type === 'error') toast.error(CustomToastContent, options);
+        else if (notif.type === 'success') toast.success(CustomToastContent, options);
+        else toast.info(CustomToastContent, options);
 
         const newNotification = {
             id: Date.now(),
             title: notif.title,
             message: notif.message,
+            originalMessage: notif.originalMessage,
             time: new Date().toLocaleTimeString(),
             type: notif.type 
         };
@@ -178,7 +178,20 @@ function App() {
         if (notif.type === 'success' && currentUser) fetchAlarms();
     });
 
-    return () => { socket.off('tickerUpdate'); socket.off('marketUpdate'); socket.off('notification'); };
+    socket.on('force_logout', (targetUsername) => {
+        if (currentUser && currentUser.username === targetUsername) {
+            
+            toast.error("Hesabınız yönetici tarafından silindiği için oturum sonlandırıldı.", {
+                position: "top-center",
+                autoClose: 5000,
+                theme: "dark"
+            });
+
+            handleLogout(); 
+        }
+    });
+
+    return () => { socket.off('tickerUpdate'); socket.off('marketUpdate'); socket.off('notification'); socket.off('force_logout');};
   }, [currentUser]); 
 
   useEffect(() => {
@@ -477,20 +490,37 @@ function App() {
                                     {notifications.length > 0 ? (
                                         notifications.map(n => (
                                             <div key={n.id} style={{padding: '12px 15px', borderBottom: '1px solid #2a2a35', fontSize: '0.85rem', position: 'relative'}}>
+                                                
                                                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '4px'}}>
-                                                    <div style={{fontWeight: '700', color: n.type === 'success' ? '#00ff88' : (n.type === 'error' ? '#ff4d4d' : '#00d2ff')}}>
-                                                    {n.title}
+                                                    <div style={{
+                                                        fontWeight: '700', 
+                                                        color: n.type === 'success' ? '#00ff88' : (n.type === 'error' ? '#ff4d4d' : (n.type === 'support_reply' ? '#e0aaff' : '#00d2ff'))
+                                                    }}>
+                                                        {n.title}
                                                     </div>
                                                     <button 
-                                                        onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                                                        onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} 
                                                         style={{background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1rem', padding: '0 5px', lineHeight: '1'}}
                                                         title="Sil"
                                                     >
                                                         &times;
                                                     </button>
                                                 </div>
-                                                <div style={{color: '#ccc', marginBottom: '5px', paddingRight: '15px'}}>{n.message}</div>
-                                                <div style={{fontSize: '0.7rem', color: '#666', textAlign: 'right'}}>{n.time}</div>
+
+                                                {n.originalMessage ? (
+                                                    <div style={{marginTop:'5px'}}>
+                                                        <div style={{background:'rgba(255,255,255,0.05)', padding:'5px', borderRadius:'4px', marginBottom:'5px', color:'#888', fontStyle:'italic', fontSize:'0.8rem'}}>
+                                                            Siz: "{n.originalMessage}"
+                                                        </div>
+                                                        <div style={{color:'#eee'}}>
+                                                            <em>CryptoLive Ekibi</em>: {n.message}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{color: '#ccc', marginBottom: '5px', paddingRight: '15px'}}>{n.message}</div>
+                                                )}
+
+                                                <div style={{fontSize: '0.7rem', color: '#666', textAlign: 'right', marginTop:'5px'}}>{n.time}</div>
                                             </div>
                                         ))
                                     ) : (
@@ -656,82 +686,156 @@ function App() {
 const modalStyle = {position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:10000, display:'flex', justifyContent:'center', alignItems:'center'};
 const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.8)'};
 
+// PROFİL DÜZENLEME MODALI
 const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
+    const [activeSection, setActiveSection] = useState(0); 
+
     const [currentPass, setCurrentPass] = useState('');
     const [newPass, setNewPass] = useState('');
     const [newUsername, setNewUsername] = useState(user.username);
+    
+    const [deletePass, setDeletePass] = useState(''); 
+
+    const [supportSubject, setSupportSubject] = useState('Öneri');
+    const [supportMsg, setSupportMsg] = useState('');
+    
     const [loading, setLoading] = useState(false);
 
+    // 1. PROFİL GÜNCELLEME
     const handleUpdate = async (e) => {
         e.preventDefault();
-        if (!currentPass) {
-            toast.warn("İşlem yapmak için mevcut şifrenizi girmelisiniz.");
-            return;
-        }
+        if (!currentPass) { toast.warn("Mevcut şifrenizi girmelisiniz."); return; }
         setLoading(true);
         try {
             const res = await AuthService.updateProfile(user.username, currentPass, newPass, newUsername);
             toast.success(res.message);
-            if (res.user) {
-                onUpdateSuccess(res.user); 
-            }
-            onClose(); 
-        } catch (err) {
-            toast.error(err.message);
-        } finally {
-            setLoading(false);
+            if (res.user) onUpdateSuccess(res.user);
+            setCurrentPass('');
+            setNewPass('');
+        } catch (err) { toast.error(err.message); } 
+        finally { setLoading(false); }
+    };
+
+    // 2. HESAP SİLME
+    const handleDelete = async () => {
+        if(!deletePass) { 
+            toast.warn("Lütfen güvenliğiniz için şifrenizi girin."); 
+            return; 
+        }
+        if(window.confirm("Hesabınızı kalıcı olarak silmek üzeresiniz! Emin misiniz?")) {
+            try {
+                await AuthService.deleteAccount(user.username, deletePass);
+                toast.info("Hesabınız silindi.");
+                window.location.reload();
+            } catch(e) { toast.error(e.message); }
         }
     };
+
+    // 3. DESTEK
+    const handleSendSupport = async (e) => {
+        e.preventDefault();
+        if(!supportMsg) return;
+        setLoading(true);
+        try {
+            await AuthService.sendSupport(user.username, supportSubject, supportMsg);
+            toast.success("Mesajınız iletildi!");
+            setSupportMsg('');
+        } catch(e) { toast.error("Gönderilemedi."); }
+        finally { setLoading(false); }
+    };
+
+    const SectionBtn = ({ id, icon, title, color = '#eee' }) => (
+        <button 
+            onClick={() => setActiveSection(activeSection === id ? 0 : id)}
+            style={{
+                width:'100%', textAlign:'left', padding:'15px', 
+                background: activeSection === id ? 'rgba(255,255,255,0.05)' : 'transparent',
+                border:'none', borderBottom:'1px solid #333', color: color,
+                cursor:'pointer', fontWeight:'bold', display:'flex', justifyContent:'space-between', alignItems:'center'
+            }}
+        >
+            <span>{icon} {title}</span>
+            <span>{activeSection === id ? '▼' : '▶'}</span>
+        </button>
+    );
 
     return (
         <div style={modalStyle}>
             <div style={overlayStyle} onClick={onClose}></div>
-            <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '300px', zIndex: 10001, position:'relative' }}>
-                <h3 style={{color:'#00d2ff', marginTop:0, textAlign:'center'}}>Profil Ayarları</h3>
+            <div style={{ background: '#1e1e2e', borderRadius: '16px', border: '1px solid #333', width: '350px', zIndex: 10001, position:'relative', overflow:'hidden', display:'flex', flexDirection:'column' }}>
                 
-                <form onSubmit={handleUpdate}>
-                    {/* KULLANICI ADI */}
-                    <div style={{marginBottom:'15px'}}>
-                        <label style={{color:'#888', fontSize:'0.8rem', display:'block', marginBottom:'5px'}}>Kullanıcı Adı</label>
-                        <input 
-                            type="text" 
-                            value={newUsername} 
-                            onChange={e=>setNewUsername(e.target.value)} 
-                            style={{width:'100%', padding:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', boxSizing:'border-box', fontWeight:'bold'}} 
-                        />
-                    </div>
+                <div style={{padding:'15px', borderBottom:'1px solid #333', background:'#15151b', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                    <h3 style={{color:'#00d2ff', margin:0, fontSize:'1.1rem'}}>Profil Ayarları</h3>
+                    <button onClick={onClose} style={{background:'none', border:'none', color:'#666', cursor:'pointer', fontSize:'1.2rem'}}>✕</button>
+                </div>
 
-                    <div style={{marginBottom:'15px'}}>
-                        <label style={{color:'#ff4d4d', fontSize:'0.8rem', display:'block', marginBottom:'5px'}}>Mevcut Şifre <span style={{fontSize:'0.7rem'}}>(Onay için gerekli)</span></label>
+                {/* 1. ÜYELİK BİLGİLERİM */}
+                <SectionBtn id={1} icon="👤" title="Üyelik Bilgilerim" color="#00d2ff" />
+                {activeSection === 1 && (
+                    <div style={{padding:'20px', background:'#1a1a24'}}>
+                        <form onSubmit={handleUpdate}>
+                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Kullanıcı Adı</label>
+                            <input type="text" value={newUsername} onChange={e=>setNewUsername(e.target.value)} style={inputStyle} />
+                            
+                            <label style={{color:'#ff4d4d', fontSize:'0.8rem', display:'block'}}>Mevcut Şifre (Zorunlu Alan)</label>
+                            <input type="password" value={currentPass} onChange={e=>setCurrentPass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d'}} placeholder="Şifreniz" />
+
+                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Yeni Şifre</label>
+                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="Yeni şifrenizi girin" style={inputStyle} />
+                            
+                            <button type="submit" disabled={loading} style={btnStyle}>Güncelle</button>
+                        </form>
+                    </div>
+                )}
+
+                {/* 2. HESABIMI SİL */}
+                <SectionBtn id={2} icon="🗑️" title="Hesabımı Sil" color="#ff4d4d" />
+                {activeSection === 2 && (
+                    <div style={{padding:'20px', background:'#2a1a1a'}}>
+                        <p style={{color:'#ccc', fontSize:'0.9rem', marginTop:0}}>Hesabınızı silmek geri alınamaz bir işlemdir.</p>
+                        
+                        <label style={{color:'#ff4d4d', fontSize:'0.8rem', display:'block', marginTop:'10px'}}>Onay için Şifreniz:</label>
                         <input 
                             type="password" 
-                            value={currentPass} 
-                            onChange={e=>setCurrentPass(e.target.value)} 
-                            style={{width:'100%', padding:'10px', background:'#2a1a1a', border:'1px solid #ff4d4d', color:'white', borderRadius:'8px', boxSizing:'border-box'}} 
-                            required
+                            value={deletePass} 
+                            onChange={e=>setDeletePass(e.target.value)} 
+                            style={{...inputStyle, borderColor:'#ff4d4d', background:'#1a0a0a'}} 
+                            placeholder="Şifrenizi girin" 
                         />
-                    </div>
 
-                    <div style={{marginBottom:'20px'}}>
-                        <label style={{color:'#888', fontSize:'0.8rem', display:'block', marginBottom:'5px'}}>Yeni Şifre <span style={{fontSize:'0.7rem'}}>(Değişmeyecekse boş bırak)</span></label>
-                        <input 
-                            type="password" 
-                            value={newPass} 
-                            onChange={e=>setNewPass(e.target.value)} 
-                            placeholder="Yeni şifreyi buraya girin"
-                            style={{width:'100%', padding:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', boxSizing:'border-box'}} 
-                        />
+                        <button onClick={handleDelete} style={{...btnStyle, background:'transparent', border:'1px solid #ff4d4d', color:'#ff4d4d'}}>
+                            ⚠️ Hesabımı Kalıcı Olarak Sil
+                        </button>
                     </div>
+                )}
 
-                    <button type="submit" disabled={loading} style={{width:'100%', padding:'10px', background:'linear-gradient(90deg, #00d2ff, #007aff)', color:'white', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>
-                        {loading ? 'Güncelleniyor...' : 'Değişiklikleri Kaydet'}
-                    </button>
-                </form>
-                
-                <button onClick={onClose} style={{width:'100%', marginTop:'10px', background:'transparent', color:'#666', border:'none', cursor:'pointer', fontSize:'0.8rem'}}>İptal</button>
+                {/* 3. YARDIM VE DESTEK */}
+                <SectionBtn id={3} icon="💬" title="Yardım ve Destek" color="#00ff88" />
+                {activeSection === 3 && (
+                    <div style={{padding:'20px', background:'#1a2420'}}>
+                        <form onSubmit={handleSendSupport}>
+                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Konu</label>
+                            <select value={supportSubject} onChange={e=>setSupportSubject(e.target.value)} style={inputStyle}>
+                                <option>Öneri</option>
+                                <option>Şikayet</option>
+                                <option>Teknik Sorun</option>
+                                <option>Teşekkür</option>
+                            </select>
+
+                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Mesajınız</label>
+                            <textarea rows="4" value={supportMsg} onChange={e=>setSupportMsg(e.target.value)} placeholder="Bize ne iletmek istersin?" style={{...inputStyle, resize:'none'}}></textarea>
+                            
+                            <button type="submit" disabled={loading} style={{...btnStyle, background:'#00ff88', color:'#000'}}>Gönder</button>
+                        </form>
+                    </div>
+                )}
+
             </div>
         </div>
     );
 };
+
+const inputStyle = { width:'100%', padding:'10px', marginBottom:'10px', background:'#0f0f13', border:'1px solid #333', color:'white', borderRadius:'6px', boxSizing:'border-box', outline:'none' };
+const btnStyle = { width:'100%', padding:'10px', background:'linear-gradient(90deg, #00d2ff, #007aff)', color:'white', border:'none', borderRadius:'6px', fontWeight:'bold', cursor:'pointer', marginTop:'5px' };
 
 export default App;

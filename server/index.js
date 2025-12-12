@@ -42,7 +42,8 @@ const readDB = () => {
         const parsed = JSON.parse(data);
         
         if (!parsed.alarms) parsed.alarms = [];
-        
+        if (!parsed.supportMessages) parsed.supportMessages = [];
+
         return parsed;
     } catch (err) {
         console.error("DB Okuma Hatası:", err);
@@ -330,7 +331,7 @@ app.post('/api/register', (req, res) => {
     const { username, password } = req.body;
     const db = readDB();
     if (db.users.find(u => u.username === username)) {
-        return res.status(400).json({ success: false, message: 'Bu kullanıcı adı zaten alınmış.' });
+        return res.status(400).json({ success: false, message: 'Bu kullanıcı adı alınmış.' });
     }
     db.users.push({ username, password });
     db.favorites[username] = [];
@@ -455,9 +456,9 @@ app.post('/api/login', (req, res) => {
 });
 
 app.post('/api/notification', (req, res) => {
-    const { title, message, type } = req.body;
-    console.log(`BİLDİRİM: ${title}`);
-    io.emit('notification', { title, message, type: type || 'info', time: new Date().toLocaleTimeString() });
+    const { title, message, type, targetUser } = req.body;
+    console.log(`BİLDİRİM: ${title} -> ${targetUser || 'HERKES'}`);
+    io.emit('notification', { title, message, type: type || 'info', targetUser: targetUser || null,time: new Date().toLocaleTimeString() });
     res.send({ success: true });
 });
 
@@ -563,38 +564,35 @@ app.post('/api/admin/delete-user', (req, res) => {
 
     if (db.users.length < initialUserLength) {
         writeDB(db);
+        io.emit('force_logout', username);
         res.json({ success: true, message: 'Kullanıcı silindi' });
     } else {
         res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
     }
 });
 
-//  PROFİL GÜNCELLEME (İSİM VE ŞİFRE)
 app.post('/api/update-profile', (req, res) => {
     const { username, currentPassword, newPassword, newUsername } = req.body;
     const db = readDB();
-    
-    // 1. Kullanıcıyı bul
+
     const userIndex = db.users.findIndex(u => u.username === username);
     if (userIndex === -1) {
         return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
     }
     const user = db.users[userIndex];
 
-    // 2. Mevcut şifre kontrolü
     if (user.password !== currentPassword) {
         return res.status(400).json({ success: false, message: 'Mevcut şifreniz hatalı.' });
     }
 
-    // 3. Kullanıcı Adı Değişikliği
     let finalUsername = username; 
     
     if (newUsername && newUsername !== username) {
         const isTaken = db.users.find(u => u.username === newUsername);
         if (isTaken) {
-            return res.status(400).json({ success: false, message: 'Bu kullanıcı adı zaten dolu.' });
+            return res.status(400).json({ success: false, message: 'Bu kullanıcı adı alınmış.' });
         }
-        
+
         db.users[userIndex].username = newUsername;
 
         if (db.favorites[username]) {
@@ -610,11 +608,18 @@ app.post('/api/update-profile', (req, res) => {
             });
         }
 
-        finalUsername = newUsername;
-        console.log(`KULLANICI ADI DEĞİŞTİ: ${username} -> ${newUsername}`);
+        if (db.supportMessages && db.supportMessages.length > 0) {
+            db.supportMessages.forEach(msg => {
+                if (msg.username === username) {
+                    msg.username = newUsername;
+                }
+            });
+        }
+
+        finalUsername = newUsername; 
+        console.log(`KULLANICI ADI GÜNCELLENDİ: ${username} -> ${newUsername}`);
     }
 
-    // 4. Şifre Değişikliği
     if (newPassword && newPassword.length > 0) {
         db.users[userIndex].password = newPassword;
         console.log(`ŞİFRE DEĞİŞTİ: ${finalUsername}`);
@@ -627,6 +632,103 @@ app.post('/api/update-profile', (req, res) => {
         message: 'Profil başarıyla güncellendi.',
         user: { username: finalUsername, favorites: db.favorites[finalUsername] || [] }
     });
+});
+
+app.post('/api/delete-my-account', (req, res) => {
+    const { username, password } = req.body;
+    const db = readDB();
+
+    const user = db.users.find(u => u.username === username);
+    if (!user) return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+
+    if (user.password !== password) {
+        return res.status(400).json({ success: false, message: 'Hesabı silmek için şifrenizi doğru girmelisiniz.' });
+    }
+
+    db.users = db.users.filter(u => u.username !== username);
+    db.alarms = db.alarms.filter(a => a.username !== username);
+    if (db.favorites[username]) delete db.favorites[username];
+
+    writeDB(db);
+    console.log(`KULLANICI HESABINI SİLDİ: ${username}`);
+    
+    res.json({ success: true, message: 'Hesabınız başarıyla silindi.' });
+});
+
+// DESTEK (YARDIM) SİSTEMİ
+
+// 1. Kullanıcıdan Mesaj Al
+app.post('/api/support', (req, res) => {
+    const { username, subject, message } = req.body;
+    const db = readDB();
+
+    const newMessage = {
+        id: Date.now(),
+        username,
+        subject,  
+        message,   
+        date: new Date().toLocaleString(),
+        isRead: false
+    };
+
+    db.supportMessages.unshift(newMessage);
+    writeDB(db);
+
+    console.log(`YENİ DESTEK MESAJI: ${username} - ${subject}`);
+    res.json({ success: true, message: 'Mesajınız iletildi. Teşekkürler!' });
+});
+
+// 2. Admin'e Mesajları Göster
+app.get('/api/admin/support', (req, res) => {
+    const db = readDB();
+    const messages = (db.supportMessages || []).map(msg => ({
+        ...msg,
+        replies: msg.replies || [] 
+    }));
+    res.json({ success: true, messages: db.supportMessages || [] });
+});
+
+// 3. Mesajı Sil (Admin için)
+app.post('/api/admin/delete-support', (req, res) => {
+    const { id } = req.body;
+    const db = readDB();
+    db.supportMessages = db.supportMessages.filter(m => m.id !== id);
+    writeDB(db);
+    res.json({ success: true, message: 'Mesaj silindi.' });
+});
+
+app.post('/api/admin/reply-support', (req, res) => {
+    const { id, username, replyMessage } = req.body;
+    const db = readDB();
+
+    const msgIndex = db.supportMessages.findIndex(m => m.id === id);
+    if (msgIndex === -1) return res.status(404).json({ success: false, message: 'Mesaj bulunamadı.' });
+
+    if (!db.supportMessages[msgIndex].replies) {
+        db.supportMessages[msgIndex].replies = [];
+    }
+
+    const newReply = {
+        text: replyMessage,
+        date: new Date().toLocaleString()
+    };
+    
+    db.supportMessages[msgIndex].replies.push(newReply);
+    writeDB(db);
+
+    const originalQuestion = db.supportMessages[msgIndex].message;
+
+    console.log(`YANIT GÖNDERİLDİ: ${username}`);
+    
+    io.emit('notification', { 
+        targetUser: username,
+        title: 'Destek Yanıtı',
+        message: replyMessage,
+        originalMessage: originalQuestion, 
+        type: 'support_reply' 
+    });
+
+    res.json({ success: true, message: 'Yanıt kaydedildi ve gönderildi.' });
 });
 
 const PORT = 3001;
