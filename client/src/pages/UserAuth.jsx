@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { AuthService } from '../services/Api';
+import { AuthService } from '../services/api';
 import { toast } from 'react-toastify';
 
 const UserAuth = ({ onSuccess, onClose }) => {
-    const [isLoginMode, setIsLoginMode] = useState(true); // Giriş mi Kayıt mı?
+    const [isLoginMode, setIsLoginMode] = useState(true); 
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -16,12 +16,12 @@ const UserAuth = ({ onSuccess, onClose }) => {
                 // GİRİŞ YAP
                 const result = await AuthService.userLogin(username, password);
                 toast.success(`Hoş geldin ${result.username}!`);
-                onSuccess(result); // App.js'e kullanıcıyı ve favorileri gönder
+                onSuccess(result); 
             } else {
                 // KAYIT OL
                 const result = await AuthService.register(username, password);
                 toast.success(result.message);
-                setIsLoginMode(true); // Kayıttan sonra giriş ekranına dön
+                setIsLoginMode(true);
             }
         } catch (error) {
             toast.error(error.message);

@@ -10,8 +10,21 @@ const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:5173", 
+    "http://localhost:5174"  
+  ],
+  credentials: true 
+}));
 app.use(express.json());
+
+function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h < 10 ? '0'+h : h}:${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+}
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
@@ -329,12 +342,33 @@ app.post('/api/register', (req, res) => {
 app.post('/api/user-login', (req, res) => {
     const { username, password } = req.body;
     const db = readDB();
+    
     const user = db.users.find(u => u.username === username && u.password === password);
+    
     if (user) {
+        user.isOnline = true; 
+        writeDB(db);          
+
         const userFavs = db.favorites[username] || [];
-        res.json({ success: true, username: user.username, favorites: userFavs });
+        res.json({ success: true, username: user.username, favorites: userFavs, isOnline: true });
     } else {
         res.status(401).json({ success: false, message: 'Kullanıcı adı veya şifre yanlış.' });
+    }
+});
+
+app.post('/api/logout', (req, res) => {
+    const { username } = req.body;
+    const db = readDB();
+    
+    const user = db.users.find(u => u.username === username);
+    
+    if (user) {
+        user.isOnline = false;
+        writeDB(db);           
+        console.log(`KULLANICI ÇIKIŞ YAPTI: ${username}`);
+        res.json({ success: true, message: 'Başarıyla çıkış yapıldı.' });
+    } else {
+        res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
     }
 });
 
@@ -468,6 +502,131 @@ app.get('/api/history', async (req, res) => {
         console.log(`Grafik Hatası. Mock veri dönüyor.`);
         res.send(generateMockHistory(symbol));
     }
+});
+
+app.get('/api/admin/stats', (req, res) => {
+    try {
+        const db = readDB();
+        const users = db.users || [];
+        const alarms = db.alarms || [];
+
+        const onlineCount = users.filter(u => u.isOnline === true).length;
+
+        res.json({
+            totalUsers: users.length,
+            onlineCount: onlineCount,
+            totalAlarms: alarms.length,
+            uptime: formatUptime(process.uptime())
+        });
+    } catch (error) {
+        console.error("Admin Stats Hatası:", error);
+        res.status(500).json({ message: "Veri alınamadı" });
+    }
+});
+
+app.get('/api/admin/users', (req, res) => {
+    try {
+        const db = readDB();
+        const users = db.users || [];
+        const alarms = db.alarms || [];
+        const favorites = db.favorites || {};
+
+        const userList = users.map(user => {
+            const userAlarmCount = alarms.filter(a => a.username === user.username).length;
+            const userFavCount = favorites[user.username] ? favorites[user.username].length : 0;
+
+            return {
+                username: user.username,
+                isOnline: user.isOnline || false, 
+                alarmCount: userAlarmCount,
+                favCount: userFavCount
+            };
+        });
+
+        res.json({ success: true, users: userList });
+    } catch (error) {
+        console.error("Admin Users Hatası:", error);
+        res.status(500).json({ success: false, users: [] });
+    }
+});
+
+app.post('/api/admin/delete-user', (req, res) => {
+    const { username } = req.body;
+    const db = readDB();
+    
+    const initialUserLength = db.users.length;
+    db.users = db.users.filter(u => u.username !== username);
+    
+    db.alarms = db.alarms.filter(a => a.username !== username);
+    
+    if (db.favorites[username]) delete db.favorites[username];
+
+    if (db.users.length < initialUserLength) {
+        writeDB(db);
+        res.json({ success: true, message: 'Kullanıcı silindi' });
+    } else {
+        res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+    }
+});
+
+//  PROFİL GÜNCELLEME (İSİM VE ŞİFRE)
+app.post('/api/update-profile', (req, res) => {
+    const { username, currentPassword, newPassword, newUsername } = req.body;
+    const db = readDB();
+    
+    // 1. Kullanıcıyı bul
+    const userIndex = db.users.findIndex(u => u.username === username);
+    if (userIndex === -1) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+    }
+    const user = db.users[userIndex];
+
+    // 2. Mevcut şifre kontrolü
+    if (user.password !== currentPassword) {
+        return res.status(400).json({ success: false, message: 'Mevcut şifreniz hatalı.' });
+    }
+
+    // 3. Kullanıcı Adı Değişikliği
+    let finalUsername = username; 
+    
+    if (newUsername && newUsername !== username) {
+        const isTaken = db.users.find(u => u.username === newUsername);
+        if (isTaken) {
+            return res.status(400).json({ success: false, message: 'Bu kullanıcı adı zaten dolu.' });
+        }
+        
+        db.users[userIndex].username = newUsername;
+
+        if (db.favorites[username]) {
+            db.favorites[newUsername] = db.favorites[username]; 
+            delete db.favorites[username]; 
+        }
+
+        if (db.alarms && db.alarms.length > 0) {
+            db.alarms.forEach(alarm => {
+                if (alarm.username === username) {
+                    alarm.username = newUsername;
+                }
+            });
+        }
+
+        finalUsername = newUsername;
+        console.log(`KULLANICI ADI DEĞİŞTİ: ${username} -> ${newUsername}`);
+    }
+
+    // 4. Şifre Değişikliği
+    if (newPassword && newPassword.length > 0) {
+        db.users[userIndex].password = newPassword;
+        console.log(`ŞİFRE DEĞİŞTİ: ${finalUsername}`);
+    }
+
+    writeDB(db); 
+    
+    res.json({ 
+        success: true, 
+        message: 'Profil başarıyla güncellendi.',
+        user: { username: finalUsername, favorites: db.favorites[finalUsername] || [] }
+    });
 });
 
 const PORT = 3001;

@@ -6,11 +6,18 @@
     },
     {
       "username": "DEMİR",
-      "password": "3458"
+      "password": "3458",
+      "isOnline": false
     },
     {
       "username": "SALİH",
-      "password": "1834"
+      "password": "1834",
+      "isOnline": false
+    },
+    {
+      "username": "ENES",
+      "password": "1313",
+      "isOnline": false
     }
   ],
   "favorites": {
@@ -22,10 +29,13 @@
       "SOLUSDT"
     ],
     "DEMİR": [
-      "SI=F"
+      "SI=F",
+      "BTCUSDT"
     ],
+    "ENES": [],
     "SALİH": [
-      "AAPL"
+      "BTCUSDT",
+      "ETHUSDT"
     ]
   },
   "alarms": [
