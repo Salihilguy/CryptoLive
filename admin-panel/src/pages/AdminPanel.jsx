@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AuthService } from '../services/api';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom'; 
 
-const AdminPanel = ({ onLogout }) => {
+const AdminPanel = () => { 
+    const navigate = useNavigate(); 
+
     const [stats, setStats] = useState({ totalUsers: 0, totalAlarms: 0, onlineCount: 0, uptime: '00:00:00' });
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -16,6 +19,11 @@ const AdminPanel = ({ onLogout }) => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedUser, setSelectedUser] = useState(null); 
+
+    const handleLogout = () => {
+        toast.info("Çıkış yapıldı.");
+        navigate('/'); 
+    };
 
     const fetchData = async () => {
         try {
@@ -35,7 +43,7 @@ const AdminPanel = ({ onLogout }) => {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 1000); 
+        const interval = setInterval(fetchData, 3000); 
         return () => clearInterval(interval);
     }, []);
 
@@ -104,7 +112,7 @@ const AdminPanel = ({ onLogout }) => {
                 </div>
                 
                 <button 
-                    onClick={onLogout} 
+                    onClick={handleLogout}
                     style={{ background: '#ff4d4d', color: 'white', border: 'none', padding: '6px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
                 >
                     Çıkış Yap
@@ -262,7 +270,7 @@ const AdminPanel = ({ onLogout }) => {
                                             <div style={{background:'black', color:'#00ff88', padding:'5px', fontSize:'0.8rem', borderRadius:'4px', marginBottom:'5px', fontFamily:'monospace'}}>{msg.contactInfo}</div>
                                             <div style={{display:'flex', justifyContent:'flex-end', gap:'5px'}}>
                                                  <button onClick={() => {navigator.clipboard.writeText(msg.contactInfo); toast.info("Kopyalandı");}} style={miniBtnStyle}>Kopyala</button>
-                                                 <button onClick={async () => { if(confirm('Sil?')) { await AuthService.adminDeleteSupportMessage(msg.id); fetchData(); }}} style={{...miniBtnStyle, color:'#ff4d4d'}}>Sil</button>
+                                                 <button onClick={async () => { if(window.confirm('Sil?')) { await AuthService.adminDeleteSupportMessage(msg.id); fetchData(); }}} style={{...miniBtnStyle, color:'#ff4d4d'}}>Sil</button>
                                             </div>
                                         </div>
                                     ) : (
@@ -281,7 +289,7 @@ const AdminPanel = ({ onLogout }) => {
                                                 ➜
                                             </button>
                                             <button 
-                                                onClick={async () => { if(confirm('Sil?')) { await AuthService.adminDeleteSupportMessage(msg.id); fetchData(); }}} 
+                                                onClick={async () => { if(window.confirm('Sil?')) { await AuthService.adminDeleteSupportMessage(msg.id); fetchData(); }}} 
                                                 style={{ background:'#333', border:'none', borderRadius:'4px', color:'#ff4d4d', cursor:'pointer', padding:'0 8px' }}
                                             >
                                                 🗑️
