@@ -78,6 +78,9 @@ function App() {
   const [activeTab, setActiveTab] = useState('CRYPTO');
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  const [showGuestSupport, setShowGuestSupport] = useState(false);
+  const [guestSupportType, setGuestSupportType] = useState('Genel');
+
   const markets = [
       { id: 'CRYPTO', label: 'Kripto Piyasası' },
       { id: 'BIST', label: 'BIST 100' },
@@ -394,7 +397,16 @@ function App() {
     <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box', overflowX:'hidden', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
 
-      {showUserAuth && <UserAuth onClose={()=>setShowUserAuth(false)} onSuccess={(u)=>{setCurrentUser(u);setFavorites(u.favorites);setShowUserAuth(false)}} />}
+      {showUserAuth && <UserAuth 
+            onClose={()=>setShowUserAuth(false)} 
+            onSuccess={(u)=>{setCurrentUser(u);setFavorites(u.favorites);setShowUserAuth(false)}} 
+            
+            onGuestSupport={(type) => { 
+                setGuestSupportType(type);
+                setShowUserAuth(false); 
+                setShowGuestSupport(true); 
+            }}
+        />}
     
         {showProfileModal && currentUser && (
             <ProfileModal 
@@ -407,6 +419,8 @@ function App() {
                 }}
             />
         )}
+
+        {showGuestSupport && <GuestSupportModal type={guestSupportType} onClose={() => setShowGuestSupport(false)} />}
         
             {alarmModalOpen && (
           <div style={modalStyle}>
@@ -690,24 +704,54 @@ const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'
 const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
     const [activeSection, setActiveSection] = useState(0); 
 
-    const [currentPass, setCurrentPass] = useState('');
-    const [newPass, setNewPass] = useState('');
+    // 1. KİŞİSEL BİLGİLER
     const [newUsername, setNewUsername] = useState(user.username);
+    const [newGender, setNewGender] = useState(user.gender || 'Erkek');
+    const [newBirthDate, setNewBirthDate] = useState(user.birthDate || ''); // birthDate
+    const [newPass, setNewPass] = useState('');
     
-    const [deletePass, setDeletePass] = useState(''); 
+    // 2. İLETİŞİM BİLGİLERİ
+    const [newEmail, setNewEmail] = useState(user.email || '');
+    const [newPhone, setNewPhone] = useState(user.phone || '');
 
+    const [currentPass, setCurrentPass] = useState('');
+    const [deletePass, setDeletePass] = useState(''); 
     const [supportSubject, setSupportSubject] = useState('Öneri');
     const [supportMsg, setSupportMsg] = useState('');
-    
     const [loading, setLoading] = useState(false);
 
-    // 1. PROFİL GÜNCELLEME
+    // GÜNCELLEME İŞLEMİ
     const handleUpdate = async (e) => {
         e.preventDefault();
-        if (!currentPass) { toast.warn("Mevcut şifrenizi girmelisiniz."); return; }
+        if (!currentPass) { toast.warn("Değişiklikleri kaydetmek için mevcut şifrenizi girmelisiniz."); return; }
+        
+        // YAŞ KONTROLÜ (Güncellerken de 18 yaş kontrolü)
+        if(newBirthDate) {
+            const birth = new Date(newBirthDate);
+            const today = new Date();
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                age--;
+            }
+            if (age < 18) {
+                toast.warn("Doğum tarihinize göre yaşınız 18'den küçük olamaz.");
+                return;
+            }
+        }
+
+        // TELEFON KONTROLÜ
+        if (newPhone && !/^5\d{9}$/.test(newPhone)) {
+            toast.warn("Telefon: 5 ile başlamalı ve 10 hane olmalı.");
+            return;
+        }
+
         setLoading(true);
         try {
-            const res = await AuthService.updateProfile(user.username, currentPass, newPass, newUsername);
+            const res = await AuthService.updateProfile(
+                user.username, currentPass, newPass, newUsername, 
+                newEmail, newPhone, newGender, newBirthDate
+            );
             toast.success(res.message);
             if (res.user) onUpdateSuccess(res.user);
             setCurrentPass('');
@@ -716,120 +760,167 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
         finally { setLoading(false); }
     };
 
-    // 2. HESAP SİLME
-    const handleDelete = async () => {
-        if(!deletePass) { 
-            toast.warn("Lütfen güvenliğiniz için şifrenizi girin."); 
-            return; 
-        }
-        if(window.confirm("Hesabınızı kalıcı olarak silmek üzeresiniz! Emin misiniz?")) {
-            try {
-                await AuthService.deleteAccount(user.username, deletePass);
-                toast.info("Hesabınız silindi.");
-                window.location.reload();
-            } catch(e) { toast.error(e.message); }
+    const handleDelete = async () => { 
+        if(!deletePass) { toast.warn("Şifre girin."); return; }
+        if(window.confirm("Kalıcı silinecek?")) {
+            try { await AuthService.deleteAccount(user.username, deletePass); toast.info("Silindi."); window.location.reload(); } catch(e) { toast.error(e.message); }
         }
     };
-
-    // 3. DESTEK
     const handleSendSupport = async (e) => {
-        e.preventDefault();
-        if(!supportMsg) return;
-        setLoading(true);
-        try {
-            await AuthService.sendSupport(user.username, supportSubject, supportMsg);
-            toast.success("Mesajınız iletildi!");
-            setSupportMsg('');
-        } catch(e) { toast.error("Gönderilemedi."); }
-        finally { setLoading(false); }
+        e.preventDefault(); if(!supportMsg) return; setLoading(true);
+        try { await AuthService.sendSupport(user.username, supportSubject, supportMsg); toast.success("İletildi!"); setSupportMsg(''); } catch(e) { toast.error("Hata."); } finally { setLoading(false); }
     };
 
     const SectionBtn = ({ id, icon, title, color = '#eee' }) => (
-        <button 
-            onClick={() => setActiveSection(activeSection === id ? 0 : id)}
-            style={{
-                width:'100%', textAlign:'left', padding:'15px', 
-                background: activeSection === id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border:'none', borderBottom:'1px solid #333', color: color,
-                cursor:'pointer', fontWeight:'bold', display:'flex', justifyContent:'space-between', alignItems:'center'
-            }}
-        >
-            <span>{icon} {title}</span>
-            <span>{activeSection === id ? '▼' : '▶'}</span>
+        <button onClick={() => setActiveSection(activeSection === id ? 0 : id)} style={{ width:'100%', textAlign:'left', padding:'15px', background: activeSection === id ? 'rgba(255,255,255,0.05)' : 'transparent', border:'none', borderBottom:'1px solid #333', color: color, cursor:'pointer', fontWeight:'bold', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span>{icon} {title}</span><span>{activeSection === id ? '▼' : '▶'}</span>
         </button>
     );
+
+    const labelStyle = {color:'#888', fontSize:'0.75rem', display:'block', marginBottom:'4px'};
 
     return (
         <div style={modalStyle}>
             <div style={overlayStyle} onClick={onClose}></div>
-            <div style={{ background: '#1e1e2e', borderRadius: '16px', border: '1px solid #333', width: '350px', zIndex: 10001, position:'relative', overflow:'hidden', display:'flex', flexDirection:'column' }}>
+            <div style={{ background: '#1e1e2e', borderRadius: '16px', border: '1px solid #333', width: '360px', zIndex: 10001, maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column' }}>
                 
                 <div style={{padding:'15px', borderBottom:'1px solid #333', background:'#15151b', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                     <h3 style={{color:'#00d2ff', margin:0, fontSize:'1.1rem'}}>Profil Ayarları</h3>
                     <button onClick={onClose} style={{background:'none', border:'none', color:'#666', cursor:'pointer', fontSize:'1.2rem'}}>✕</button>
                 </div>
 
-                {/* 1. ÜYELİK BİLGİLERİM */}
-                <SectionBtn id={1} icon="👤" title="Üyelik Bilgilerim" color="#00d2ff" />
+                {/* 1. KİŞİSEL BİLGİLERİM */}
+                <SectionBtn id={1} icon="👤" title="Kişisel Bilgilerim" color="#00d2ff" />
                 {activeSection === 1 && (
                     <div style={{padding:'20px', background:'#1a1a24'}}>
                         <form onSubmit={handleUpdate}>
-                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Kullanıcı Adı</label>
+                            <label style={labelStyle}>Kullanıcı Adı</label>
                             <input type="text" value={newUsername} onChange={e=>setNewUsername(e.target.value)} style={inputStyle} />
                             
-                            <label style={{color:'#ff4d4d', fontSize:'0.8rem', display:'block'}}>Mevcut Şifre (Zorunlu Alan)</label>
-                            <input type="password" value={currentPass} onChange={e=>setCurrentPass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d'}} placeholder="Şifreniz" />
+                            <div style={{display:'flex', gap:'10px'}}>
+                                <div style={{flex:1}}>
+                                    <label style={labelStyle}>Cinsiyet</label>
+                                    <select value={newGender} onChange={e=>setNewGender(e.target.value)} style={inputStyle}>
+                                        <option>Erkek</option><option>Kadın</option>
+                                    </select>
+                                </div>
+                                <div style={{flex:1}}>
+                                    <label style={labelStyle}>Doğum Tarihi</label>
+                                    <input type="date" value={newBirthDate} onChange={e=>setNewBirthDate(e.target.value)} style={{...inputStyle, colorScheme:'dark'}} />
+                                </div>
+                            </div>
 
-                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Yeni Şifre</label>
-                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="Yeni şifrenizi girin" style={inputStyle} />
+                            <label style={labelStyle}>Yeni Şifre</label>
+                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="Yeni şifrenizi buraya girin" style={inputStyle} />
                             
-                            <button type="submit" disabled={loading} style={btnStyle}>Güncelle</button>
+                            <hr style={{borderColor:'#333', margin:'15px 0'}} />
+                            <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre (Zorunlu Alan)</label>
+                            <input type="password" value={currentPass} onChange={e=>setCurrentPass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d'}} placeholder="Mevcut şifrenizi buraya girin" required />
+                            
+                            <button type="submit" disabled={loading} style={btnStyle}>Kaydet</button>
                         </form>
                     </div>
                 )}
 
-                {/* 2. HESABIMI SİL */}
-                <SectionBtn id={2} icon="🗑️" title="Hesabımı Sil" color="#ff4d4d" />
+                {/* 2. İLETİŞİM BİLGİLERİM */}
+                <SectionBtn id={2} icon="📞" title="İletişim Bilgilerim" color="#f1c40f" />
                 {activeSection === 2 && (
-                    <div style={{padding:'20px', background:'#2a1a1a'}}>
-                        <p style={{color:'#ccc', fontSize:'0.9rem', marginTop:0}}>Hesabınızı silmek geri alınamaz bir işlemdir.</p>
-                        
-                        <label style={{color:'#ff4d4d', fontSize:'0.8rem', display:'block', marginTop:'10px'}}>Onay için Şifreniz:</label>
-                        <input 
-                            type="password" 
-                            value={deletePass} 
-                            onChange={e=>setDeletePass(e.target.value)} 
-                            style={{...inputStyle, borderColor:'#ff4d4d', background:'#1a0a0a'}} 
-                            placeholder="Şifrenizi girin" 
-                        />
-
-                        <button onClick={handleDelete} style={{...btnStyle, background:'transparent', border:'1px solid #ff4d4d', color:'#ff4d4d'}}>
-                            ⚠️ Hesabımı Kalıcı Olarak Sil
-                        </button>
+                    <div style={{padding:'20px', background:'#1f1f1a'}}>
+                        <form onSubmit={handleUpdate}>
+                            <label style={labelStyle}>E-posta Adresi</label>
+                            <input type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} style={inputStyle} />
+                            
+                            <label style={labelStyle}>Telefon Numarası</label>
+                            <input type="tel" value={newPhone} onChange={e=>setNewPhone(e.target.value)} maxLength={10} placeholder="532..." style={inputStyle} />
+                            
+                            <hr style={{borderColor:'#333', margin:'15px 0'}} />
+                            <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre (Zorunlu Alan)</label>
+                            <input type="password" value={currentPass} onChange={e=>setCurrentPass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d'}} required />
+                            
+                            <button type="submit" disabled={loading} style={btnStyle}>Kaydet</button>
+                        </form>
                     </div>
                 )}
 
-                {/* 3. YARDIM VE DESTEK */}
-                <SectionBtn id={3} icon="💬" title="Yardım ve Destek" color="#00ff88" />
+                {/* 3. HESABIMI SİL */}
+                <SectionBtn id={3} icon="🗑️" title="Hesabımı Sil" color="#ff4d4d" />
                 {activeSection === 3 && (
+                    <div style={{padding:'20px', background:'#2a1a1a'}}>
+                        <p style={{color:'#ccc', fontSize:'0.9rem', marginTop:0}}>Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+                        <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre (Zorunlu Alan)</label>
+                        <input type="password" value={deletePass} onChange={e=>setDeletePass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d', background:'#1a0a0a'}} />
+                        <button onClick={handleDelete} style={{...btnStyle, background:'transparent', border:'1px solid #ff4d4d', color:'#ff4d4d'}}>⚠️ Hesabı Sil</button>
+                    </div>
+                )}
+
+                {/* 4. YARDIM */}
+                <SectionBtn id={4} icon="💬" title="Yardım ve Destek" color="#00ff88" />
+                {activeSection === 4 && (
                     <div style={{padding:'20px', background:'#1a2420'}}>
                         <form onSubmit={handleSendSupport}>
-                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Konu</label>
-                            <select value={supportSubject} onChange={e=>setSupportSubject(e.target.value)} style={inputStyle}>
-                                <option>Öneri</option>
-                                <option>Şikayet</option>
-                                <option>Teknik Sorun</option>
-                                <option>Teşekkür</option>
-                            </select>
-
-                            <label style={{color:'#888', fontSize:'0.8rem', display:'block'}}>Mesajınız</label>
-                            <textarea rows="4" value={supportMsg} onChange={e=>setSupportMsg(e.target.value)} placeholder="Bize ne iletmek istersin?" style={{...inputStyle, resize:'none'}}></textarea>
-                            
+                            <label style={labelStyle}>Konu</label>
+                            <select value={supportSubject} onChange={e=>setSupportSubject(e.target.value)} style={inputStyle}><option>Öneri</option><option>Şikayet</option><option>Teknik</option></select>
+                            <label style={labelStyle}>Mesaj</label>
+                            <textarea rows="3" value={supportMsg} onChange={e=>setSupportMsg(e.target.value)} style={{...inputStyle, resize:'none'}}></textarea>
                             <button type="submit" disabled={loading} style={{...btnStyle, background:'#00ff88', color:'#000'}}>Gönder</button>
                         </form>
                     </div>
                 )}
+            </div>
+        </div>
+    );
+};
 
+const GuestSupportModal = ({ onClose, type }) => { 
+    const [name, setName] = useState('');
+    const [contact, setContact] = useState(''); 
+
+    const [subject, setSubject] = useState(
+        type === 'LOGIN' ? 'Giriş Sorunu' : 
+        (type === 'REGISTER' ? 'Üye Olamıyorum' : 'Genel Sorun')
+    );
+    
+    const [msg, setMsg] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+        if (!contact || !msg) { toast.warn("Bilgiler eksik."); return; }
+        setLoading(true);
+        try {
+            await AuthService.sendSupport(name || 'Ziyaretçi', subject, msg, contact);
+            toast.success("Mesajınız iletildi!");
+            onClose();
+        } catch (err) { toast.error("Hata."); } 
+        finally { setLoading(false); }
+    };
+
+    return (
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={onClose}></div>
+            <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '320px', zIndex: 10001, position:'relative' }}>
+                <h3 style={{color:'#00ff88', marginTop:0, textAlign:'center'}}>
+                    {type === 'LOGIN' ? 'Giriş Sorunu' : (type === 'REGISTER' ? 'Üyelik Sorunu' : 'Bize Ulaşın')}
+                </h3>
+                
+                <form onSubmit={handleSend}>
+                    <input type="text" placeholder="Adınız (Opsiyonel)" value={name} onChange={e=>setName(e.target.value)} style={inputStyle} />
+                    <input type="text" placeholder="E-posta veya Tel" value={contact} onChange={e=>setContact(e.target.value)} style={{...inputStyle, borderColor:'#00d2ff'}} required />
+
+                    <select value={subject} onChange={e=>setSubject(e.target.value)} style={inputStyle}>
+                        <option>Üye Olamıyorum</option>
+                        <option>Giriş Sorunu</option>
+                        <option>Şifremi Unuttum</option>
+                        <option>Diğer</option>
+                    </select>
+
+                    <textarea rows="4" placeholder="Sorununuzu kısaca yazın..." value={msg} onChange={e=>setMsg(e.target.value)} style={{...inputStyle, resize:'none'}} required></textarea>
+
+                    <button type="submit" disabled={loading} style={btnStyle}>
+                        {loading ? '...' : 'Gönder'}
+                    </button>
+                </form>
+                <button onClick={onClose} style={{width:'100%', marginTop:'10px', background:'transparent', color:'#666', border:'none', cursor:'pointer'}}>Kapat</button>
             </div>
         </div>
     );

@@ -3,7 +3,7 @@ import axios from 'axios';
 const API_URL = "http://localhost:3001/api";
 
 export const AuthService = {
-    // --- AUTH İŞLEMLERİ ---
+    // AUTH İŞLEMLERİ
     adminLogin: async (username, password) => {
         try {
             const res = await axios.post(`${API_URL}/login`, { username, password });
@@ -13,21 +13,21 @@ export const AuthService = {
         }
     },
     
-    register: async (username, password) => {
+    register: async (username, password, email, phone, birthDate, gender) => { 
         try {
-            const res = await axios.post(`${API_URL}/register`, { username, password });
-            return res.data;
+            const response = await axios.post(`${API_URL}/register`, { username, password, email, phone, birthDate, gender });
+            return response.data;
         } catch (error) {
-            throw { message: error.response?.data?.message || 'Kayıt hatası' };
+            throw error.response ? error.response.data : { message: 'Sunucu hatası' };
         }
     },
 
-    userLogin: async (username, password) => {
+    userLogin: async (loginInput, password) => {
         try {
-            const res = await axios.post(`${API_URL}/user-login`, { username, password });
-            return res.data;
+            const response = await axios.post(`${API_URL}/login`, { loginInput, password });
+            return response.data;
         } catch (error) {
-            throw { message: error.response?.data?.message || 'Giriş hatası' };
+            throw error.response ? error.response.data : { message: 'Sunucu hatası' };
         }
     },
 
@@ -40,17 +40,16 @@ export const AuthService = {
     },
 
 
-    updateProfile: async (username, currentPassword, newPassword, newUsername) => {
+    updateProfile: async (currentUsername, currentPassword, newPass, newUsername, newEmail, newPhone, newGender, newBirthDate) => {
         try {
-            const res = await axios.post(`${API_URL}/update-profile`, { 
-                username, 
-                currentPassword, 
-                newPassword,
-                newUsername
+            const response = await axios.post(`${API_URL}/update-profile`, { 
+                currentUsername, currentPassword, 
+                newPassword: newPass, newUsername,
+                newEmail, newPhone, newGender, newBirthDate 
             });
-            return res.data;
+            return response.data;
         } catch (error) {
-            throw { message: error.response?.data?.message || 'Güncelleme hatası' };
+            throw error.response ? error.response.data : { message: 'Hata' };
         }
     },
 
@@ -63,7 +62,7 @@ export const AuthService = {
         }
     },
 
-    // --- FAVORİ İŞLEMLERİ ---
+    // FAVORİ İŞLEMLERİ
     toggleFavorite: async (username, symbol) => {
         try {
             const res = await axios.post(`${API_URL}/toggle-favorite`, { username, symbol });
@@ -74,7 +73,7 @@ export const AuthService = {
         }
     },
 
-    // --- ALARM İŞLEMLERİ ---
+    // ALARM İŞLEMLERİ
     setAlarm: async (username, symbol, targetPrice, currentPrice, note = "") => {
         try {
             const res = await axios.post(`${API_URL}/set-alarm`, { 
@@ -124,7 +123,7 @@ export const AuthService = {
         }
     },
 
-    // --- ADMIN İŞLEMLERİ ---
+    // ADMIN İŞLEMLERİ
     adminGetUsers: async () => {
         try {
             const res = await axios.get(`${API_URL}/admin/users`);
@@ -162,9 +161,10 @@ export const AuthService = {
             throw { message: 'Duyuru gönderilemedi.' };
         }
     },
-    sendSupport: async (username, subject, message) => {
+
+    sendSupport: async (username, subject, message, contactInfo = null) => {
         try {
-            const res = await axios.post(`${API_URL}/support`, { username, subject, message });
+            const res = await axios.post(`${API_URL}/support`, { username, subject, message, contactInfo });
             return res.data;
         } catch (error) {
             throw { message: 'Mesaj gönderilemedi.' };
