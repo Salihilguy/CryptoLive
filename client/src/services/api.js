@@ -24,10 +24,13 @@ export const AuthService = {
 
     userLogin: async (loginInput, password) => {
         try {
-            const response = await axios.post(`${API_URL}/login`, { loginInput, password });
-            return response.data;
+            const res = await axios.post(`${API_URL}/user-login`, { 
+                username: loginInput, 
+                password: password 
+            });
+            return res.data;
         } catch (error) {
-            throw error.response ? error.response.data : { message: 'Sunucu hatası' };
+            throw { message: error.response?.data?.message || 'Giriş başarısız.' };
         }
     },
 

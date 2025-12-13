@@ -6,7 +6,7 @@ export const AuthService = {
     // GİRİŞ İŞLEMLERİ
     adminLogin: async (username, password) => {
         try {
-            const res = await axios.post(`${API_URL}/login`, { username, password });
+            const res = await axios.post(`${API_URL}/admin-login`, { username, password });
             return res.data;
         } catch (error) {
             throw { message: error.response?.data?.message || 'Bağlantı hatası' };

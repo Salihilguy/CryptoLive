@@ -396,15 +396,29 @@ app.post('/api/user-login', (req, res) => {
     const user = db.users.find(u => 
         (u.email === username || u.phone === username) && u.password === password
     );
-    
+
     if (user) {
-        user.isOnline = true; 
-        writeDB(db);           
+        user.isOnline = true;
+        writeDB(db);
 
         const userFavs = db.favorites[user.username] || [];
-        res.json({ success: true, username: user.username, favorites: userFavs, isOnline: true });
+
+        res.json({ 
+            success: true, 
+            message: 'Giriş Başarılı',
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,          
+                birthDate: user.birthDate,  
+                gender: user.gender,        
+                favorites: userFavs,
+                isAdmin: user.isAdmin
+            }
+        });
     } else {
-        res.status(401).json({ success: false, message: 'Bilgiler hatalı (E-posta/Tel veya Şifre yanlış).' });
+        res.status(400).json({ success: false, message: 'E-posta/Telefon veya şifre hatalı.' });
     }
 });
 
@@ -497,38 +511,21 @@ app.post('/api/set-alarm', (req, res) => {
     res.json({ success: true, message: `${symbol} için ${targetPrice} fiyatına alarm kuruldu!` });
 });
 
-app.post('/api/login', (req, res) => {
-    const { loginInput, password } = req.body; // (mail veya tel)
-    const db = readDB();
+app.post('/api/admin-login', (req, res) => {
+    const { username, password } = req.body;
 
-    // Kullanıcıyı E-posta veya Telefon ile bul
-    const user = db.users.find(u => 
-        (u.email === loginInput || u.phone === loginInput) && u.password === password
-    );
+    const ADMIN_USER = "admin";
+    const ADMIN_PASS = "1234";
 
-    if (user) {
-        user.isOnline = true;
-        writeDB(db);
-
-        const userFavs = db.favorites[user.username] || [];
-        
-        console.log(`GİRİŞ YAPILDI: ${user.username}`);
-        io.emit('marketUpdate', []); 
-
+    if (username === ADMIN_USER && password === ADMIN_PASS) {
+        console.log("ADMIN PANELİNE GİRİŞ YAPILDI");
         res.json({ 
             success: true, 
             message: 'Giriş başarılı.', 
-            user: { 
-                username: user.username, 
-                email: user.email, 
-                phone: user.phone, 
-                birthDate: user.birthDate,
-                gender: user.gender, 
-                favorites: userFavs 
-            } 
+            user: { username: 'admin', isAdmin: true, isOnline: true } 
         });
     } else {
-        res.status(400).json({ success: false, message: 'Giriş bilgileri hatalı.' });
+        res.status(403).json({ success: false, message: 'Hatalı kullanıcı adı veya şifre.' });
     }
 });
 

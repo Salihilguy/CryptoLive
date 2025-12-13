@@ -79,10 +79,11 @@ const UserAuth = ({ onSuccess, onClose, onGuestSupport }) => {
         try {
             if (isLoginMode) {
                 const result = await AuthService.userLogin(loginInput, loginPassword);
+                
                 toast.success(`Hoş geldin ${result.user.username}!`);
                 onSuccess(result.user); 
             } else {
-                const result = await AuthService.register(regUsername.trim(), regPassword, regEmail, regPhone, regBirthDate, regGender);
+                const result = await AuthService.register(regUsername, regPassword, regEmail, regPhone, regBirthDate, regGender);
                 toast.success(result.message);
                 setIsLoginMode(true);
             }
