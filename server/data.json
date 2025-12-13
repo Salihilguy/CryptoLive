@@ -1,23 +1,43 @@
 {
   "users": [
     {
+      "id": 1765622420176,
       "username": "FUAT",
-      "password": "1453"
+      "password": "1453",
+      "email": "fuat1453@gmail.com",
+      "phone": "5535535353",
+      "birthDate": "2005-01-04",
+      "gender": "Erkek",
+      "isAdmin": false,
+      "isOnline": true,
+      "favorites": [],
+      "alarmCount": 0
     },
     {
-      "username": "DEMİR",
-      "password": "3458",
-      "isOnline": false
+      "id": 1765627227462,
+      "username": "A",
+      "password": "1234",
+      "email": "A@B.C",
+      "phone": "5555555555",
+      "birthDate": "2005-01-01",
+      "gender": "Erkek",
+      "isAdmin": false,
+      "isOnline": false,
+      "favorites": [],
+      "alarmCount": 0
     },
     {
-      "username": "SALİH",
-      "password": "1834",
-      "isOnline": false
-    },
-    {
-      "username": "ENES",
-      "password": "1313",
-      "isOnline": false
+      "id": 1765628481126,
+      "username": "AA",
+      "password": "1111",
+      "email": "A@A.B",
+      "phone": "5555155555",
+      "birthDate": "2005-01-01",
+      "gender": "Erkek",
+      "isAdmin": false,
+      "isOnline": false,
+      "favorites": [],
+      "alarmCount": 0
     }
   ],
   "favorites": {
@@ -48,5 +68,16 @@
       "note": ""
     }
   ],
-  "supportMessages": []
+  "supportMessages": [
+    {
+      "id": 1765620719610,
+      "username": "Salih",
+      "contactInfo": "salihaa",
+      "subject": "Giriş Sorunu",
+      "message": "sdasfd",
+      "date": "13.12.2025 13:11:59",
+      "isRead": false,
+      "replies": []
+    }
+  ]
 }

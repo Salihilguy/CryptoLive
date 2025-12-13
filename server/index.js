@@ -328,32 +328,83 @@ try {
 setTimeout(() => { if (!isBinanceWorking) startFakeTickerService(); }, 5000);
 
 app.post('/api/register', (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, email, phone, birthDate, gender } = req.body; 
     const db = readDB();
-    if (db.users.find(u => u.username === username)) {
-        return res.status(400).json({ success: false, message: 'Bu kullanıcı adı alınmış.' });
+
+    // 1. E-POSTA KONTROLÜ
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ success: false, message: 'Geçerli bir e-posta adresi giriniz.' });
     }
-    db.users.push({ username, password });
-    db.favorites[username] = [];
+
+    // TELEFON KONTROLÜ (5 ile başlayan 10 hane)
+    const phoneRegex = /^5\d{9}$/;
+    if (!phoneRegex.test(phone)) {
+        return res.status(400).json({ success: false, message: 'Telefon numarası 5 ile başlamalı ve 10 haneli olmalıdır.' });
+    }
+
+    // 18 YAŞ KONTROLÜ
+    const birth = new Date(birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+    }
+
+    if (age < 18) {
+        return res.status(400).json({ success: false, message: 'Üye olmak için gün/ay/yıl olarak 18 yaşını doldurmuş olmalısınız.' });
+    }
+
+    // BENZERSİZLİK KONTROLÜ
+    const emailExists = db.users.find(u => u.email === email);
+    if (emailExists) {
+        return res.status(400).json({ success: false, message: 'Bu e-posta adresi zaten kullanımda.' });
+    }
+
+    const phoneExists = db.users.find(u => u.phone === phone);
+    if (phoneExists) {
+        return res.status(400).json({ success: false, message: 'Bu telefon numarası zaten kullanımda.' });
+    }
+
+    const newUser = {
+        id: Date.now(),
+        username,
+        password,
+        email,
+        phone,
+        birthDate, 
+        gender,
+        isAdmin: false,
+        isOnline: false,
+        favorites: [],
+        alarmCount: 0
+    };
+
+    db.users.push(newUser);
     writeDB(db);
-    console.log(`YENİ KULLANICI: ${username}`);
-    res.json({ success: true, message: 'Kayıt başarılı! Giriş yapabilirsin.' });
+    
+    console.log(`YENİ ÜYE: ${username}`);
+    res.json({ success: true, message: 'Kayıt başarılı! Giriş yapabilirsiniz.' });
 });
 
 app.post('/api/user-login', (req, res) => {
-    const { username, password } = req.body;
+    const { username, password } = req.body; 
     const db = readDB();
-    
-    const user = db.users.find(u => u.username === username && u.password === password);
+
+    const user = db.users.find(u => 
+        (u.email === username || u.phone === username) && u.password === password
+    );
     
     if (user) {
         user.isOnline = true; 
-        writeDB(db);          
+        writeDB(db);           
 
-        const userFavs = db.favorites[username] || [];
+        const userFavs = db.favorites[user.username] || [];
         res.json({ success: true, username: user.username, favorites: userFavs, isOnline: true });
     } else {
-        res.status(401).json({ success: false, message: 'Kullanıcı adı veya şifre yanlış.' });
+        res.status(401).json({ success: false, message: 'Bilgiler hatalı (E-posta/Tel veya Şifre yanlış).' });
     }
 });
 
@@ -447,11 +498,37 @@ app.post('/api/set-alarm', (req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    if (username === 'admin' && password === '1234') {
-        res.json({ success: true, token: 'admin-token' });
+    const { loginInput, password } = req.body; // (mail veya tel)
+    const db = readDB();
+
+    // Kullanıcıyı E-posta veya Telefon ile bul
+    const user = db.users.find(u => 
+        (u.email === loginInput || u.phone === loginInput) && u.password === password
+    );
+
+    if (user) {
+        user.isOnline = true;
+        writeDB(db);
+
+        const userFavs = db.favorites[user.username] || [];
+        
+        console.log(`GİRİŞ YAPILDI: ${user.username}`);
+        io.emit('marketUpdate', []); 
+
+        res.json({ 
+            success: true, 
+            message: 'Giriş başarılı.', 
+            user: { 
+                username: user.username, 
+                email: user.email, 
+                phone: user.phone, 
+                birthDate: user.birthDate,
+                gender: user.gender, 
+                favorites: userFavs 
+            } 
+        });
     } else {
-        res.status(401).json({ success: false, message: 'Hatalı admin girişi!' });
+        res.status(400).json({ success: false, message: 'Giriş bilgileri hatalı.' });
     }
 });
 
@@ -537,7 +614,12 @@ app.get('/api/admin/users', (req, res) => {
             const userFavCount = favorites[user.username] ? favorites[user.username].length : 0;
 
             return {
+                id: user.id,          
                 username: user.username,
+                email: user.email,   
+                phone: user.phone,    
+                gender: user.gender,  
+                birthDate: user.birthDate,   
                 isOnline: user.isOnline || false, 
                 alarmCount: userAlarmCount,
                 favCount: userFavCount
@@ -572,65 +654,47 @@ app.post('/api/admin/delete-user', (req, res) => {
 });
 
 app.post('/api/update-profile', (req, res) => {
-    const { username, currentPassword, newPassword, newUsername } = req.body;
-    const db = readDB();
+    const { 
+        currentUsername, currentPassword, newPassword, newUsername,
+        newEmail, newPhone, newGender, newBirthDate 
+    } = req.body;
 
-    const userIndex = db.users.findIndex(u => u.username === username);
-    if (userIndex === -1) {
-        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
-    }
+    const db = readDB();
+    const userIndex = db.users.findIndex(u => u.username === currentUsername);
+    if (userIndex === -1) return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+    
     const user = db.users[userIndex];
 
     if (user.password !== currentPassword) {
         return res.status(400).json({ success: false, message: 'Mevcut şifreniz hatalı.' });
     }
 
-    let finalUsername = username; 
-    
-    if (newUsername && newUsername !== username) {
-        const isTaken = db.users.find(u => u.username === newUsername);
-        if (isTaken) {
-            return res.status(400).json({ success: false, message: 'Bu kullanıcı adı alınmış.' });
-        }
-
-        db.users[userIndex].username = newUsername;
-
-        if (db.favorites[username]) {
-            db.favorites[newUsername] = db.favorites[username]; 
-            delete db.favorites[username]; 
-        }
-
-        if (db.alarms && db.alarms.length > 0) {
-            db.alarms.forEach(alarm => {
-                if (alarm.username === username) {
-                    alarm.username = newUsername;
-                }
-            });
-        }
-
-        if (db.supportMessages && db.supportMessages.length > 0) {
-            db.supportMessages.forEach(msg => {
-                if (msg.username === username) {
-                    msg.username = newUsername;
-                }
-            });
-        }
-
-        finalUsername = newUsername; 
-        console.log(`KULLANICI ADI GÜNCELLENDİ: ${username} -> ${newUsername}`);
+    if(newEmail && newEmail !== user.email) {
+        if(db.users.find(u => u.email === newEmail)) return res.status(400).json({ success: false, message: 'Bu e-posta kullanımda.' });
+        user.email = newEmail;
+    }
+    if(newPhone && newPhone !== user.phone) {
+        if(db.users.find(u => u.phone === newPhone)) return res.status(400).json({ success: false, message: 'Bu telefon kullanımda.' });
+        user.phone = newPhone;
     }
 
-    if (newPassword && newPassword.length > 0) {
-        db.users[userIndex].password = newPassword;
-        console.log(`ŞİFRE DEĞİŞTİ: ${finalUsername}`);
+    if (newUsername && newUsername !== currentUsername) {
+        if (db.favorites[currentUsername]) { db.favorites[newUsername] = db.favorites[currentUsername]; delete db.favorites[currentUsername]; }
+        if (db.alarms) { db.alarms.forEach(a => { if(a.username === currentUsername) a.username = newUsername; }); }
+        if (db.supportMessages) { db.supportMessages.forEach(m => { if(m.username === currentUsername) m.username = newUsername; }); }
+        user.username = newUsername;
     }
+
+    if (newGender) user.gender = newGender;
+    if (newBirthDate) user.birthDate = newBirthDate;
+    if (newPassword) user.password = newPassword;
 
     writeDB(db); 
     
     res.json({ 
         success: true, 
-        message: 'Profil başarıyla güncellendi.',
-        user: { username: finalUsername, favorites: db.favorites[finalUsername] || [] }
+        message: 'Bilgiler güncellendi.',
+        user: { ...user, favorites: db.favorites[user.username] || [] }
     });
 });
 
@@ -659,22 +723,24 @@ app.post('/api/delete-my-account', (req, res) => {
 
 // 1. Kullanıcıdan Mesaj Al
 app.post('/api/support', (req, res) => {
-    const { username, subject, message } = req.body;
+    const { username, subject, message, contactInfo } = req.body;
     const db = readDB();
 
     const newMessage = {
         id: Date.now(),
-        username,
-        subject,  
-        message,   
+        username: username || 'Ziyaretçi', 
+        contactInfo: contactInfo || null,
+        subject,
+        message,
         date: new Date().toLocaleString(),
-        isRead: false
+        isRead: false,
+        replies: []
     };
 
     db.supportMessages.unshift(newMessage);
     writeDB(db);
 
-    console.log(`YENİ DESTEK MESAJI: ${username} - ${subject}`);
+    console.log(`YENİ DESTEK MESAJI: ${newMessage.username} - ${subject}`);
     res.json({ success: true, message: 'Mesajınız iletildi. Teşekkürler!' });
 });
 
