@@ -1,3 +1,4 @@
+require('dotenv').config();
 const axios = require('axios');
 const express = require('express');
 const cors = require('cors');
@@ -5,19 +6,34 @@ const http = require('http');
 const { Server } = require("socket.io");
 const WebSocket = require('ws');
 const https = require('https');
-const fs = require('fs');
+const mongoose = require('mongoose');
 const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance();
+const nodemailer = require('nodemailer');
+
+const User = require('./models/User');
+const Alarm = require('./models/Alarm');
+const SupportMessage = require('./models/SupportMessage');
 
 const app = express();
 app.use(cors({
-  origin: [
-    "http://localhost:5173", 
-    "http://localhost:5174"  
-  ],
+  origin: ["http://localhost:5173", "http://localhost:5174"],
   credentials: true 
 }));
 app.use(express.json());
+
+// MONGODB BAĞLANTISI
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Atlas'a Bağlandı."))
+  .catch((err) => console.error("MongoDB Bağlantı Hatası:", err));
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'cryptolivedestek@gmail.com',
+        pass: 'aymr sidh iddz oybk'    
+    }
+});
 
 function formatUptime(seconds) {
     const h = Math.floor(seconds / 3600);
@@ -29,79 +45,43 @@ function formatUptime(seconds) {
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-const DB_FILE = 'data.json';
-
-const readDB = () => {
+// ALARM KONTROL SİSTEMİ
+const checkAlarms = async (marketData) => {
     try {
-        if (!fs.existsSync(DB_FILE)) {
-            const initialData = { users: [], favorites: {}, alarms: [] };
-            fs.writeFileSync(DB_FILE, JSON.stringify(initialData));
-            return initialData;
-        }
-        const data = fs.readFileSync(DB_FILE, 'utf8');
-        const parsed = JSON.parse(data);
-        
-        if (!parsed.alarms) parsed.alarms = [];
-        if (!parsed.supportMessages) parsed.supportMessages = [];
+        const alarms = await Alarm.find({ isActive: true });
+        if (alarms.length === 0) return;
 
-        return parsed;
-    } catch (err) {
-        console.error("DB Okuma Hatası:", err);
-        return { users: [], favorites: {}, alarms: [] };
-    }
-};
+        for (const alarm of alarms) {
+            const coin = marketData.find(c => c.symbol === alarm.symbol);
+            if (coin && coin.price) {
+                const currentPrice = parseFloat(coin.price);
+                const targetPrice = alarm.targetPrice;
+                let isTriggered = false;
 
-const writeDB = (data) => {
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (err) {
-        console.error("DB Yazma Hatası:", err);
-    }
-};
+                if (alarm.direction === 'UP' && currentPrice >= targetPrice) isTriggered = true;
+                if (alarm.direction === 'DOWN' && currentPrice <= targetPrice) isTriggered = true;
 
-const checkAlarms = (marketData) => {
-    const db = readDB();
-    if (!db.alarms || db.alarms.length === 0) return; 
+                if (isTriggered) {
+                    console.log(`🔔 ALARM: ${alarm.username} -> ${alarm.symbol} @ ${currentPrice}`);
+                    const userNote = alarm.note ? `\n📝 Not: ${alarm.note}` : '';
 
-    let alarmTriggered = false;
+                    io.emit('notification', {
+                        targetUser: alarm.username, 
+                        title: `🔔 FİYAT ALARMI: ${alarm.symbol}`,
+                        message: `${alarm.symbol} hedef ${targetPrice} seviyesini gördü! (Anlık: ${currentPrice})${userNote}`,
+                        type: 'success'
+                    });
 
-    const remainingAlarms = db.alarms.filter(alarm => {
-        const coin = marketData.find(c => c.symbol === alarm.symbol);
-        
-        if (coin && coin.price) {
-            const currentPrice = parseFloat(coin.price);
-            const targetPrice = parseFloat(alarm.targetPrice);
-            let isTriggered = false;
-
-            if (alarm.direction === 'UP' && currentPrice >= targetPrice) isTriggered = true;
-            if (alarm.direction === 'DOWN' && currentPrice <= targetPrice) isTriggered = true;
-
-            if (isTriggered) {
-                console.log(`🔔 ALARM TETİKLENDİ: ${alarm.username} -> ${alarm.symbol} @ ${currentPrice}`);
-                
-                const userNote = alarm.note ? `\n📝 Notun: ${alarm.note}` : '';
-
-                io.emit('notification', {
-                    targetUser: alarm.username, 
-                    title: `🔔 FİYAT ALARMI: ${alarm.symbol}`,
-                    message: `${alarm.symbol} hedeflediğin ${targetPrice} fiyatına ulaştı! (Güncel: ${currentPrice})${userNote}`,
-                    type: 'success'
-                });
-                
-                alarmTriggered = true;
-                return false; 
+                    await Alarm.findByIdAndDelete(alarm._id);
+                }
             }
         }
-        return true;
-    });
-
-    if (alarmTriggered) {
-        db.alarms = remainingAlarms;
-        writeDB(db);
+    } catch (err) {
+        console.error("Alarm Kontrol Hatası:", err);
     }
 };
 
-
+// MARKET VERİLERİ
 const COIN_METADATA = {
     'BTCUSDT': { name: 'Bitcoin', logo: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' },
     'ETHUSDT': { name: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png' },
@@ -172,7 +152,6 @@ const MARKET_ASSETS = [
 const tradingViewMap = {
   'TCELL.IS': 'TCELL',
   'TTKOM.IS': 'TTKOM',
-
   'GBPTRY=X': 'FX:GBPTRY',
   'JPYTRY=X': 'FX:JPYTRY',
   'EURTRY=X': 'FX:EURTRY',
@@ -180,30 +159,21 @@ const tradingViewMap = {
   'EURUSD=X': 'FX:EURUSD',
   'CHFTRY=X': 'FX:CHFTRY',
   'CADTRY=X': 'FX:CADTRY',
-
   'GC=F': 'COMEX:GC1!', 
   'CL=F': 'NYMEX:CL1!',
-
   'BTCUSDT': 'BINANCE:BTCUSDT',
   'ETHUSDT': 'BINANCE:ETHUSDT'
 };
 
 function convertToTradingView(symbol) {
   if (!symbol || typeof symbol !== 'string') return symbol;
-
   if (tradingViewMap[symbol]) return tradingViewMap[symbol];
-
   if (symbol.endsWith('=X')) {
     const core = symbol.replace('=X', '');
     return `FX:${core}`;
   }
-
-  if (symbol === 'TRY=X') {
-    return 'FX:USDTRY';
-  }
-
+  if (symbol === 'TRY=X') return 'FX:USDTRY';
   if (symbol.includes(':')) return symbol;
-
   return symbol;
 }
 
@@ -247,18 +217,12 @@ async function fetchGlobalMarkets() {
 
         let finalResults = rawResults.map(item => {
             if (item.type === 'HIDDEN') return null;
-
-            if (item.symbol === 'CNYTRY=X' && (!item.price || item.price < 0.1)) {
-                item.price = usdTryPrice / usdCnyPrice;
-            }
-            if (item.symbol === 'RUBTRY=X' && (!item.price || item.price < 0.01)) {
-                item.price = usdTryPrice / usdRubPrice;
-            }
-            
+            if (item.symbol === 'CNYTRY=X' && (!item.price || item.price < 0.1)) item.price = usdTryPrice / usdCnyPrice;
+            if (item.symbol === 'RUBTRY=X' && (!item.price || item.price < 0.01)) item.price = usdTryPrice / usdRubPrice;
             return item;
         }).filter(Boolean);
 
-   if (usdTryPrice && onsGold) {
+        if (usdTryPrice && onsGold) {
             const gramAltin = (onsGold * usdTryPrice) / 31.1035;
             finalResults.push({ symbol: 'GRAM-ALTIN', name: 'Gram Altın', type: 'COMMODITY', price: gramAltin, change: 0, logo: 'https://img.icons8.com/fluency/96/gold-bars.png', tradingViewSymbol: 'FX:XAUTRYG' });
             finalResults.push({ symbol: 'CEYREK-ALTIN', name: 'Çeyrek Altın', type: 'COMMODITY', price: gramAltin * 1.63, change: 0, logo: 'https://img.icons8.com/fluency/96/coin-wallet.png', tradingViewSymbol: 'FX:XAUTRYG' });
@@ -269,13 +233,11 @@ async function fetchGlobalMarkets() {
             finalResults.push({ symbol: 'GRAM-GUMUS', name: 'Gram Gümüş', type: 'COMMODITY', price: gramGumus, change: 0, logo: 'https://img.icons8.com/fluency/96/silver-bars.png', tradingViewSymbol: 'FX:XAGTRY' });
         }
 
-        if (finalResults.length > 0) {
-            io.emit('marketUpdate', finalResults);
-        }
+        if (finalResults.length > 0) io.emit('marketUpdate', finalResults);
 
-        } catch (err) {
-            console.error("Fetch Hatası:", err.message);
-        }
+    } catch (err) {
+        console.error("Fetch Hatası:", err.message);
+    }
 }
 
 setInterval(fetchGlobalMarkets, 5000);
@@ -310,13 +272,7 @@ try {
                 const cleanData = filteredCoins.map(coin => {
                     const info = COIN_METADATA[coin.s];
                     if(coin.c) BASE_PRICES[coin.s] = parseFloat(coin.c);
-
-                    return { symbol: coin.s, 
-                        name: info ? info.name : coin.s, 
-                        logo: info ? info.logo : '', 
-                        price: parseFloat(coin.c), 
-                        change: parseFloat(coin.P) 
-                    };
+                    return { symbol: coin.s, name: info ? info.name : coin.s, logo: info ? info.logo : '', price: parseFloat(coin.c), change: parseFloat(coin.P) };
                 });
                 io.emit('tickerUpdate', cleanData);
                 checkAlarms(cleanData); 
@@ -327,472 +283,344 @@ try {
 
 setTimeout(() => { if (!isBinanceWorking) startFakeTickerService(); }, 5000);
 
-app.post('/api/register', (req, res) => {
+
+// KAYIT OL
+app.post('/api/register', async (req, res) => {
     const { username, password, email, phone, birthDate, gender } = req.body; 
-    const db = readDB();
 
-    // 1. E-POSTA KONTROLÜ
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ success: false, message: 'Geçerli bir e-posta adresi giriniz.' });
+    if (username.toLowerCase() === 'admin') {
+        return res.status(400).json({ success: false, message: 'Bu isim kullanılamaz.' });
     }
 
-    // TELEFON KONTROLÜ (5 ile başlayan 10 hane)
-    const phoneRegex = /^5\d{9}$/;
-    if (!phoneRegex.test(phone)) {
-        return res.status(400).json({ success: false, message: 'Telefon numarası 5 ile başlamalı ve 10 haneli olmalıdır.' });
-    }
+    try {
+        const emailExists = await User.findOne({ email });
+        if (emailExists) return res.status(400).json({ success: false, message: 'Bu e-posta zaten kullanımda.' });
 
-    // 18 YAŞ KONTROLÜ
-    const birth = new Date(birthDate);
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
+        const phoneExists = await User.findOne({ phone });
+        if (phoneExists) return res.status(400).json({ success: false, message: 'Bu telefon zaten kullanımda.' });
 
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-        age--;
-    }
-
-    if (age < 18) {
-        return res.status(400).json({ success: false, message: 'Üye olmak için gün/ay/yıl olarak 18 yaşını doldurmuş olmalısınız.' });
-    }
-
-    // BENZERSİZLİK KONTROLÜ
-    const emailExists = db.users.find(u => u.email === email);
-    if (emailExists) {
-        return res.status(400).json({ success: false, message: 'Bu e-posta adresi zaten kullanımda.' });
-    }
-
-    const phoneExists = db.users.find(u => u.phone === phone);
-    if (phoneExists) {
-        return res.status(400).json({ success: false, message: 'Bu telefon numarası zaten kullanımda.' });
-    }
-
-    const newUser = {
-        id: Date.now(),
-        username,
-        password,
-        email,
-        phone,
-        birthDate, 
-        gender,
-        isAdmin: false,
-        isOnline: false,
-        favorites: [],
-        alarmCount: 0
-    };
-
-    db.users.push(newUser);
-    writeDB(db);
-    
-    console.log(`YENİ ÜYE: ${username}`);
-    res.json({ success: true, message: 'Kayıt başarılı! Giriş yapabilirsiniz.' });
-});
-
-app.post('/api/user-login', (req, res) => {
-    const { username, password } = req.body; 
-    const db = readDB();
-
-    const user = db.users.find(u => 
-        (u.email === username || u.phone === username) && u.password === password
-    );
-
-    if (user) {
-        user.isOnline = true;
-        writeDB(db);
-
-        const userFavs = db.favorites[user.username] || [];
-
-        res.json({ 
-            success: true, 
-            message: 'Giriş Başarılı',
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                phone: user.phone,          
-                birthDate: user.birthDate,  
-                gender: user.gender,        
-                favorites: userFavs,
-                isAdmin: user.isAdmin
-            }
+        const newUser = new User({
+            username, password, email, phone, birthDate, gender, isAdmin: false, isOnline: false
         });
-    } else {
-        res.status(400).json({ success: false, message: 'E-posta/Telefon veya şifre hatalı.' });
+
+        await newUser.save();
+        console.log(`YENİ ÜYE (MongoDB): ${username}`);
+        res.json({ success: true, message: 'Kayıt başarılı! Giriş yapabilirsiniz.' });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Sunucu hatası.' });
     }
 });
 
-app.post('/api/logout', (req, res) => {
-    const { username } = req.body;
-    const db = readDB();
+// MÜŞTERİ GİRİŞİ (Mail/Tel)
+app.post('/api/user-login', async (req, res) => {
+    const { username, password } = req.body; 
     
-    const user = db.users.find(u => u.username === username);
-    
-    if (user) {
-        user.isOnline = false;
-        writeDB(db);           
-        console.log(`KULLANICI ÇIKIŞ YAPTI: ${username}`);
-        res.json({ success: true, message: 'Başarıyla çıkış yapıldı.' });
-    } else {
-        res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
+    try {
+        const user = await User.findOne({ 
+            $or: [{ email: username }, { phone: username }],
+            password: password 
+        });
+
+        if (user) {
+            user.isOnline = true;
+            await user.save();
+
+            res.json({ 
+                success: true, 
+                message: 'Giriş Başarılı',
+                user: {
+                    id: user._id,
+                    username: user.username,
+                    email: user.email,
+                    phone: user.phone,
+                    birthDate: user.birthDate,
+                    gender: user.gender,
+                    favorites: user.favorites || [],
+                    isAdmin: user.isAdmin
+                }
+            });
+        } else {
+            res.status(401).json({ success: false, message: 'Bilgiler hatalı.' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Sunucu hatası.' });
     }
 });
 
-app.post('/api/toggle-favorite', (req, res) => {
-    const { username, symbol } = req.body;
-    const db = readDB();
-    if (!db.favorites[username]) db.favorites[username] = [];
-    const currentFavs = db.favorites[username];
-    const index = currentFavs.indexOf(symbol);
-    if (index === -1) currentFavs.push(symbol);
-    else currentFavs.splice(index, 1);
-    db.favorites[username] = currentFavs;
-    writeDB(db);
-    res.json({ success: true, favorites: currentFavs });
-});
-
-app.post('/api/update-alarm', (req, res) => {
-    const { username, alarmId, newTargetPrice, currentPrice, note } = req.body; 
-    const db = readDB();
-
-    const alarmIndex = db.alarms.findIndex(a => a.id === alarmId && a.username === username);
-    
-    if (alarmIndex !== -1) {
-        db.alarms[alarmIndex].targetPrice = parseFloat(newTargetPrice);
-        db.alarms[alarmIndex].note = note || ""; 
-        
-        const direction = parseFloat(newTargetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
-        db.alarms[alarmIndex].direction = direction;
-
-        writeDB(db);
-        res.json({ success: true, message: 'Alarm güncellendi.' });
-    } else {
-        res.status(404).json({ success: false, message: 'Alarm bulunamadı.' });
-    }
-});
-
-app.post('/api/get-alarms', (req, res) => {
-    const { username } = req.body;
-    const db = readDB();
-    const userAlarms = db.alarms.filter(a => a.username === username);
-    res.json({ success: true, alarms: userAlarms });
-});
-
-app.post('/api/delete-alarm', (req, res) => {
-    const { username, alarmId } = req.body;
-    const db = readDB();
-    
-    const initialLength = db.alarms.length;
-    db.alarms = db.alarms.filter(a => !(a.id === alarmId && a.username === username));
-    
-    writeDB(db);
-    res.json({ success: true, message: 'Alarm silindi.' });
-});
-
-app.post('/api/set-alarm', (req, res) => {
-    const { username, symbol, targetPrice, currentPrice, note } = req.body; 
-    const db = readDB();
-
-    const direction = parseFloat(targetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
-
-    const newAlarm = {
-        id: Date.now(),
-        username,
-        symbol,
-        targetPrice: parseFloat(targetPrice),
-        direction,
-        note: note || "" 
-    };
-
-    db.alarms.push(newAlarm);
-    writeDB(db);
-
-    console.log(`ALARM KURULDU: ${username} -> ${symbol} Hedef: ${targetPrice}, Not: ${note}`);
-    res.json({ success: true, message: `${symbol} için ${targetPrice} fiyatına alarm kuruldu!` });
-});
-
+// ADMIN GİRİŞİ
 app.post('/api/admin-login', (req, res) => {
     const { username, password } = req.body;
-
     const ADMIN_USER = "admin";
     const ADMIN_PASS = "1234";
 
     if (username === ADMIN_USER && password === ADMIN_PASS) {
         console.log("ADMIN PANELİNE GİRİŞ YAPILDI");
-        res.json({ 
-            success: true, 
-            message: 'Giriş başarılı.', 
-            user: { username: 'admin', isAdmin: true, isOnline: true } 
-        });
+        res.json({ success: true, message: 'Giriş başarılı.', user: { username: 'admin', isAdmin: true, isOnline: true } });
     } else {
         res.status(403).json({ success: false, message: 'Hatalı kullanıcı adı veya şifre.' });
     }
 });
 
+// FAVORİ EKLE/ÇIKAR
+app.post('/api/toggle-favorite', async (req, res) => {
+    const { username, symbol } = req.body;
+    try {
+        const user = await User.findOne({ username });
+        if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı' });
+
+        if (user.favorites.includes(symbol)) {
+            user.favorites = user.favorites.filter(s => s !== symbol);
+        } else {
+            user.favorites.push(symbol);
+        }
+        await user.save();
+        res.json({ success: true, favorites: user.favorites });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+// ALARM KUR
+app.post('/api/set-alarm', async (req, res) => {
+    const { userId, username, symbol, targetPrice, currentPrice, note } = req.body; 
+    const direction = parseFloat(targetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
+
+    try {
+        const newAlarm = new Alarm({ userId, username, symbol, targetPrice, direction, note });
+        await newAlarm.save();
+        console.log(`ALARM KURULDU (DB): ${username} -> ${symbol}`);
+        res.json({ success: true, message: 'Alarm kuruldu!' });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+app.post('/api/get-alarms', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        const alarms = await Alarm.find({ userId });
+        res.json({ success: true, alarms });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+app.post('/api/delete-alarm', async (req, res) => {
+    const { alarmId } = req.body;
+    try {
+        await Alarm.findByIdAndDelete(alarmId);
+        res.json({ success: true, message: 'Alarm silindi.' });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+// ADMIN İSTATİSTİKLERİ
+app.get('/api/admin/stats', async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const onlineCount = await User.countDocuments({ isOnline: true });
+        const totalAlarms = await Alarm.countDocuments();
+        res.json({ totalUsers, onlineCount, totalAlarms, uptime: formatUptime(process.uptime()) });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+// ADMIN KULLANICI LİSTESİ
+app.get('/api/admin/users', async (req, res) => {
+    try {
+        const users = await User.find();
+        const userList = await Promise.all(users.map(async (u) => {
+            const alarmCount = await Alarm.countDocuments({ username: u.username });
+            return {
+                id: u._id,
+                username: u.username,
+                email: u.email,
+                phone: u.phone,
+                gender: u.gender,
+                birthDate: u.birthDate,
+                isOnline: u.isOnline,
+                favCount: u.favorites.length,
+                alarmCount: alarmCount
+            };
+        }));
+        res.json({ success: true, users: userList });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+app.post('/api/admin/delete-user', async (req, res) => {
+    const { username } = req.body;
+    try {
+        await User.findOneAndDelete({ username });
+        await Alarm.deleteMany({ username });
+        await SupportMessage.deleteMany({ username });
+        io.emit('force_logout', username);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+// DESTEK SİSTEMİ
+app.post('/api/support', async (req, res) => {
+    const { username, subject, message, contactInfo } = req.body;
+    try {
+        const newMsg = new SupportMessage({
+            username: username || 'Ziyaretçi',
+            subject, message, contactInfo,
+            date: new Date().toLocaleString()
+        });
+        await newMsg.save();
+        res.json({ success: true, message: 'Mesaj iletildi.' });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+app.get('/api/admin/support', async (req, res) => {
+    try {
+        const messages = await SupportMessage.find().sort({ createdAt: -1 });
+        const formatted = messages.map(m => ({
+            id: m._id,
+            ...m._doc
+        }));
+        res.json({ success: true, messages: formatted });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+app.post('/api/admin/delete-support', async (req, res) => {
+    const { id } = req.body;
+    try {
+        await SupportMessage.findByIdAndDelete(id);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+app.post('/api/admin/reply-support', async (req, res) => {
+    const { id, username, replyMessage } = req.body;
+    try {
+        const msg = await SupportMessage.findById(id);
+        if(msg) {
+            msg.replies.push({ text: replyMessage, date: new Date().toLocaleString() });
+            await msg.save();
+            
+            io.emit('notification', { 
+                targetUser: username, 
+                title: 'Destek Yanıtı', 
+                message: replyMessage, 
+                type: 'info' 
+            });
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ message: 'Mesaj bulunamadı' });
+        }
+    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
 app.post('/api/notification', (req, res) => {
     const { title, message, type, targetUser } = req.body;
-    console.log(`BİLDİRİM: ${title} -> ${targetUser || 'HERKES'}`);
-    io.emit('notification', { title, message, type: type || 'info', targetUser: targetUser || null,time: new Date().toLocaleTimeString() });
+    io.emit('notification', { title, message, type: type || 'info', targetUser });
     res.send({ success: true });
 });
 
-function generateMockHistory(symbol) {
-    const data = [];
-    let close = BASE_PRICES[symbol] || 100;
-    
-    for (let i = 24; i > 0; i--) {
-        const date = new Date();
-        date.setHours(date.getHours() - i);
-        
-        const volatility = close * 0.02; 
-        const open = close + (Math.random() - 0.5) * volatility;
-        const tempClose = open + (Math.random() - 0.5) * volatility;
-        const high = Math.max(open, tempClose) + Math.random() * volatility * 0.5;
-        const low = Math.min(open, tempClose) - Math.random() * volatility * 0.5;
-        
-        close = tempClose; 
-
-        data.push({
-            x: date.getTime(), 
-            y: [parseFloat(open.toFixed(4)), parseFloat(high.toFixed(4)), parseFloat(low.toFixed(4)), parseFloat(close.toFixed(4))] 
-        });
-    }
-    return data;
-}
-
-app.get('/api/history', async (req, res) => {
-    const symbol = req.query.symbol || 'BTCUSDT';
-    try {
-        const agent = new https.Agent({ rejectUnauthorized: false, keepAlive: true, family: 4 });
-        const url = `https://api3.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=24`;
-        const response = await axios.get(url, { httpsAgent: agent, timeout: 4000 });
-
-        const chartData = response.data.map(item => ({
-            x: item[0], 
-            y: [parseFloat(item[1]), parseFloat(item[2]), parseFloat(item[3]), parseFloat(item[4])] 
-        }));
-
-        res.send(chartData);
-    } catch (error) {
-        console.log(`Grafik Hatası. Mock veri dönüyor.`);
-        res.send(generateMockHistory(symbol));
-    }
-});
-
-app.get('/api/admin/stats', (req, res) => {
-    try {
-        const db = readDB();
-        const users = db.users || [];
-        const alarms = db.alarms || [];
-
-        const onlineCount = users.filter(u => u.isOnline === true).length;
-
-        res.json({
-            totalUsers: users.length,
-            onlineCount: onlineCount,
-            totalAlarms: alarms.length,
-            uptime: formatUptime(process.uptime())
-        });
-    } catch (error) {
-        console.error("Admin Stats Hatası:", error);
-        res.status(500).json({ message: "Veri alınamadı" });
-    }
-});
-
-app.get('/api/admin/users', (req, res) => {
-    try {
-        const db = readDB();
-        const users = db.users || [];
-        const alarms = db.alarms || [];
-        const favorites = db.favorites || {};
-
-        const userList = users.map(user => {
-            const userAlarmCount = alarms.filter(a => a.username === user.username).length;
-            const userFavCount = favorites[user.username] ? favorites[user.username].length : 0;
-
-            return {
-                id: user.id,          
-                username: user.username,
-                email: user.email,   
-                phone: user.phone,    
-                gender: user.gender,  
-                birthDate: user.birthDate,   
-                isOnline: user.isOnline || false, 
-                alarmCount: userAlarmCount,
-                favCount: userFavCount
-            };
-        });
-
-        res.json({ success: true, users: userList });
-    } catch (error) {
-        console.error("Admin Users Hatası:", error);
-        res.status(500).json({ success: false, users: [] });
-    }
-});
-
-app.post('/api/admin/delete-user', (req, res) => {
+// DOĞRULAMA KODU GÖNDER
+app.post('/api/send-code', async (req, res) => {
     const { username } = req.body;
-    const db = readDB();
-    
-    const initialUserLength = db.users.length;
-    db.users = db.users.filter(u => u.username !== username);
-    
-    db.alarms = db.alarms.filter(a => a.username !== username);
-    
-    if (db.favorites[username]) delete db.favorites[username];
 
-    if (db.users.length < initialUserLength) {
-        writeDB(db);
-        io.emit('force_logout', username);
-        res.json({ success: true, message: 'Kullanıcı silindi' });
-    } else {
-        res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+    try {
+        const user = await User.findOne({ username });
+        if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
+
+        // 6 Haneli Kod Üret
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Veritabanına kaydet (10 dakika geçerli)
+        user.verificationCode = code;
+        user.verificationCodeExpires = Date.now() + 10 * 60 * 1000;
+        await user.save();
+
+        const mailOptions = {
+            from: '"CryptoLive Destek" <seninmailin@gmail.com>', 
+            
+            to: user.email,
+            subject: '🔐 Doğrulama Kodu',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #00d2ff;">CryptoLive Profil Güncelleme</h2>
+                    <p>Merhaba <b>${user.username}</b>,</p>
+                    <p>Profil bilgilerini güncellemek için aşağıdaki doğrulama kodunu kullanabilirsin:</p>
+                    <div style="background: #f4f4f4; padding: 15px; font-size: 24px; font-weight: bold; letter-spacing: 5px; text-align: center; border-radius: 8px; margin: 20px 0;">
+                        ${code}
+                    </div>
+                    <p>Bu kod 10 dakika boyunca geçerlidir. Eğer bu işlemi sen yapmadıysan, lütfen şifreni değiştir.</p>
+                    <p style="font-size: 12px; color: #999; margin-top: 30px;">CryptoLive Destek Ekibi</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`MAIL GÖNDERİLDİ: ${user.email} -> Kod: ${code}`);
+
+        res.json({ success: true, message: 'Doğrulama kodu e-posta adresinize gönderildi.' });
+
+    } catch (err) {
+        console.error("Mail Hatası:", err);
+        res.status(500).json({ message: 'Kod gönderilemedi. Gmail ayarlarınızı kontrol edin.' });
     }
 });
 
-app.post('/api/update-profile', (req, res) => {
+// KODU DOĞRULA VE GÜNCELLE
+app.post('/api/verify-update', async (req, res) => {
     const { 
-        currentUsername, currentPassword, newPassword, newUsername,
-        newEmail, newPhone, newGender, newBirthDate 
+        username, code, newUsername,
+        newEmail, newPhone, newGender, newBirthDate, newPassword 
     } = req.body;
 
-    const db = readDB();
-    const userIndex = db.users.findIndex(u => u.username === currentUsername);
-    if (userIndex === -1) return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
-    
-    const user = db.users[userIndex];
+    try {
+        const user = await User.findOne({ username });
+        if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
 
-    if (user.password !== currentPassword) {
-        return res.status(400).json({ success: false, message: 'Mevcut şifreniz hatalı.' });
+        if (!user.verificationCode || user.verificationCode !== code) {
+            return res.status(400).json({ message: 'Hatalı doğrulama kodu!' });
+        }
+
+        if (user.verificationCodeExpires < Date.now()) {
+            return res.status(400).json({ message: 'Kodun süresi dolmuş. Lütfen tekrar kod isteyin.' });
+        }
+
+        if (newUsername && newUsername !== user.username) {
+            await Alarm.updateMany({ userId: user._id.toString() }, { username: newUsername });
+            await SupportMessage.updateMany({ username: user.username }, { username: newUsername });
+            
+            user.username = newUsername;
+        }
+        
+        if (newEmail) user.email = newEmail;
+        if (newPhone) user.phone = newPhone;
+        if (newGender) user.gender = newGender;
+        if (newBirthDate) user.birthDate = newBirthDate;
+        if (newPassword) user.password = newPassword;
+
+        user.verificationCode = undefined;
+        user.verificationCodeExpires = undefined;
+
+        await user.save();
+
+        res.json({ 
+            success: true, 
+            message: 'Profiliniz başarıyla güncellendi.',
+            user: { 
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                birthDate: user.birthDate,
+                gender: user.gender,
+                favorites: user.favorites || [],
+                isAdmin: user.isAdmin
+            }
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Sunucu hatası.' });
     }
-
-    if(newEmail && newEmail !== user.email) {
-        if(db.users.find(u => u.email === newEmail)) return res.status(400).json({ success: false, message: 'Bu e-posta kullanımda.' });
-        user.email = newEmail;
-    }
-    if(newPhone && newPhone !== user.phone) {
-        if(db.users.find(u => u.phone === newPhone)) return res.status(400).json({ success: false, message: 'Bu telefon kullanımda.' });
-        user.phone = newPhone;
-    }
-
-    if (newUsername && newUsername !== currentUsername) {
-        if (db.favorites[currentUsername]) { db.favorites[newUsername] = db.favorites[currentUsername]; delete db.favorites[currentUsername]; }
-        if (db.alarms) { db.alarms.forEach(a => { if(a.username === currentUsername) a.username = newUsername; }); }
-        if (db.supportMessages) { db.supportMessages.forEach(m => { if(m.username === currentUsername) m.username = newUsername; }); }
-        user.username = newUsername;
-    }
-
-    if (newGender) user.gender = newGender;
-    if (newBirthDate) user.birthDate = newBirthDate;
-    if (newPassword) user.password = newPassword;
-
-    writeDB(db); 
-    
-    res.json({ 
-        success: true, 
-        message: 'Bilgiler güncellendi.',
-        user: { ...user, favorites: db.favorites[user.username] || [] }
-    });
 });
 
-app.post('/api/delete-my-account', (req, res) => {
-    const { username, password } = req.body;
-    const db = readDB();
-
-    const user = db.users.find(u => u.username === username);
-    if (!user) return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı.' });
-
-    if (user.password !== password) {
-        return res.status(400).json({ success: false, message: 'Hesabı silmek için şifrenizi doğru girmelisiniz.' });
-    }
-
-    db.users = db.users.filter(u => u.username !== username);
-    db.alarms = db.alarms.filter(a => a.username !== username);
-    if (db.favorites[username]) delete db.favorites[username];
-
-    writeDB(db);
-    console.log(`KULLANICI HESABINI SİLDİ: ${username}`);
-    
-    res.json({ success: true, message: 'Hesabınız başarıyla silindi.' });
+app.post('/api/logout', async (req, res) => {
+    const { username } = req.body;
+    await User.findOneAndUpdate({ username }, { isOnline: false });
+    res.json({ success: true });
 });
 
-// DESTEK (YARDIM) SİSTEMİ
-
-// 1. Kullanıcıdan Mesaj Al
-app.post('/api/support', (req, res) => {
-    const { username, subject, message, contactInfo } = req.body;
-    const db = readDB();
-
-    const newMessage = {
-        id: Date.now(),
-        username: username || 'Ziyaretçi', 
-        contactInfo: contactInfo || null,
-        subject,
-        message,
-        date: new Date().toLocaleString(),
-        isRead: false,
-        replies: []
-    };
-
-    db.supportMessages.unshift(newMessage);
-    writeDB(db);
-
-    console.log(`YENİ DESTEK MESAJI: ${newMessage.username} - ${subject}`);
-    res.json({ success: true, message: 'Mesajınız iletildi. Teşekkürler!' });
-});
-
-// 2. Admin'e Mesajları Göster
-app.get('/api/admin/support', (req, res) => {
-    const db = readDB();
-    const messages = (db.supportMessages || []).map(msg => ({
-        ...msg,
-        replies: msg.replies || [] 
-    }));
-    res.json({ success: true, messages: db.supportMessages || [] });
-});
-
-// 3. Mesajı Sil (Admin için)
-app.post('/api/admin/delete-support', (req, res) => {
-    const { id } = req.body;
-    const db = readDB();
-    db.supportMessages = db.supportMessages.filter(m => m.id !== id);
-    writeDB(db);
-    res.json({ success: true, message: 'Mesaj silindi.' });
-});
-
-app.post('/api/admin/reply-support', (req, res) => {
-    const { id, username, replyMessage } = req.body;
-    const db = readDB();
-
-    const msgIndex = db.supportMessages.findIndex(m => m.id === id);
-    if (msgIndex === -1) return res.status(404).json({ success: false, message: 'Mesaj bulunamadı.' });
-
-    if (!db.supportMessages[msgIndex].replies) {
-        db.supportMessages[msgIndex].replies = [];
-    }
-
-    const newReply = {
-        text: replyMessage,
-        date: new Date().toLocaleString()
-    };
-    
-    db.supportMessages[msgIndex].replies.push(newReply);
-    writeDB(db);
-
-    const originalQuestion = db.supportMessages[msgIndex].message;
-
-    console.log(`YANIT GÖNDERİLDİ: ${username}`);
-    
-    io.emit('notification', { 
-        targetUser: username,
-        title: 'Destek Yanıtı',
-        message: replyMessage,
-        originalMessage: originalQuestion, 
-        type: 'support_reply' 
-    });
-
-    res.json({ success: true, message: 'Yanıt kaydedildi ve gönderildi.' });
-});
-
-const PORT = 3001;
-server.listen(PORT, () => { console.log(`Sunucu aktif: http://localhost:${PORT}`); });
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => { console.log(`Sunucu (MongoDB) aktif: http://localhost:${PORT}`); });

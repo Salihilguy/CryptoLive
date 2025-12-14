@@ -21,6 +21,11 @@ const AdminPanel = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedUser, setSelectedUser] = useState(null); 
 
+    const formatDate = (dateString) => {
+        if (!dateString) return '-';
+        return new Date(dateString).toLocaleDateString('tr-TR');
+    };
+
     const handleLogout = () => {
         toast.info("Çıkış yapıldı.");
         navigate('/'); 
@@ -326,7 +331,7 @@ const AdminPanel = () => {
                             <DetailRow label="E-Posta" value={selectedUser.email} />
                             <DetailRow label="Telefon" value={selectedUser.phone} />
                             <DetailRow label="Cinsiyet" value={selectedUser.gender} />
-                            <DetailRow label="Doğum Tarihi" value={selectedUser.birthDate} />
+                            <DetailRow label="Doğum Tarihi" value={formatDate(selectedUser.birthDate)} />
                             
                             <DetailRow label="Kurulu Alarm" value={`${selectedUser.alarmCount} adet`} highlight />
                             <DetailRow label="Favori Coin" value={`${selectedUser.favCount} adet`} highlight />

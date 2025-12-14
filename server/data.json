@@ -17,7 +17,7 @@
       "id": 1765636086458,
       "username": "AA",
       "password": "1234",
-      "email": "A@B.C",
+      "email": "B@C.D",
       "phone": "5555555555",
       "birthDate": "2001-01-01",
       "gender": "Erkek",
@@ -56,6 +56,21 @@
     }
   ],
   "supportMessages": [
+    {
+      "id": 1765641662868,
+      "username": "AA",
+      "contactInfo": null,
+      "subject": "Öneri",
+      "message": "A",
+      "date": "13.12.2025 19:01:02",
+      "isRead": false,
+      "replies": [
+        {
+          "text": "B",
+          "date": "13.12.2025 19:01:12"
+        }
+      ]
+    },
     {
       "id": 1765620719610,
       "username": "Salih",
