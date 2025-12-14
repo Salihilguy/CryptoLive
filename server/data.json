@@ -9,7 +9,7 @@
       "birthDate": "2005-01-04",
       "gender": "Erkek",
       "isAdmin": false,
-      "isOnline": false,
+      "isOnline": true,
       "favorites": [],
       "alarmCount": 0
     },

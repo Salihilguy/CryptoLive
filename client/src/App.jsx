@@ -66,6 +66,9 @@ function App() {
   const [showNotifPanel, setShowNotifPanel] = useState(false); 
   const [unreadCount, setUnreadCount] = useState(0); 
 
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+
   const [alarmModalOpen, setAlarmModalOpen] = useState(false);
   const [alarmCoin, setAlarmCoin] = useState(null);
   const [alarmTarget, setAlarmTarget] = useState('');
@@ -421,6 +424,7 @@ function App() {
         )}
 
         {showGuestSupport && <GuestSupportModal type={guestSupportType} onClose={() => setShowGuestSupport(false)} />}
+        {showWalletModal && <WalletModal onClose={() => setShowWalletModal(false)} walletBalance={walletBalance} setWalletBalance={setWalletBalance} currentUser={currentUser} />}
         
             {alarmModalOpen && (
           <div style={modalStyle}>
@@ -486,6 +490,22 @@ function App() {
               <h1 style={{ color: '#00d2ff', margin: 0, fontSize:'1.8rem', fontWeight:'800' }}>CryptoLive</h1> 
               <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                   
+                  {/* SANAL CÜZDAN BUTONU */}
+                  <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                      <button 
+                          onClick={() => setShowWalletModal(true)} 
+                          style={{background: 'none', border: 'none', color: '#ccc', fontSize: '1.5rem', cursor: 'pointer', transition: 'all 0.3s', padding: '0 5px'}}
+                          onMouseEnter={(e) => e.target.style.color = '#00d2ff'}
+                          onMouseLeave={(e) => e.target.style.color = '#ccc'}
+                          title="Sanal Cüzdan"
+                      >
+                          💳
+                      </button>
+                      <span style={{color: '#00ff88', fontWeight: 'bold', fontSize: '0.9rem', fontFamily: 'Consolas', minWidth: '60px'}}>
+                          {walletBalance.toFixed(2)} ₺
+                      </span>
+                  </div>
+
                   {/* BİLDİRİM KUTUSU */}
                   <div style={{position: 'relative'}}>
                       <button onClick={toggleNotifPanel} style={{background: 'none', border: 'none', color: '#ccc', fontSize: '1.5rem', cursor: 'pointer', position:'relative'}}>
@@ -921,6 +941,530 @@ const GuestSupportModal = ({ onClose, type }) => {
                     </button>
                 </form>
                 <button onClick={onClose} style={{width:'100%', marginTop:'10px', background:'transparent', color:'#666', border:'none', cursor:'pointer'}}>Kapat</button>
+            </div>
+        </div>
+    );
+};
+
+const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: setParentBalance, currentUser }) => {
+    const [step, setStep] = useState(0);
+    const [cardNumber, setCardNumber] = useState('');
+    const [cardHolder, setCardHolder] = useState('');
+    const [expiryDate, setExpiryDate] = useState('');
+    const [cvv, setCvv] = useState('');
+    const [amount, setAmount] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [walletBalance, setWalletBalance] = useState(parentBalance || 0);
+    const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
+
+    if (!currentUser) {
+        return (
+            <div style={modalStyle}>
+                <div style={overlayStyle} onClick={onClose}></div>
+                <div style={{
+                    background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
+                    borderRadius: '20px',
+                    border: '2px solid #ff4d4d',
+                    width: '380px',
+                    zIndex: 10001,
+                    position: 'relative',
+                    padding: '40px',
+                    textAlign: 'center',
+                    boxShadow: '0 0 40px rgba(255, 77, 77, 0.3)'
+                }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔐</div>
+                    <h2 style={{ color: '#ff4d4d', margin: '0 0 15px 0', fontSize: '1.3rem' }}>Giriş Gerekli</h2>
+                    <p style={{ color: '#ccc', marginBottom: '25px', lineHeight: '1.5' }}>
+                        Sanal cüzdana erişmek için lütfen giriş yapınız.
+                    </p>
+                    <button 
+                        onClick={onClose}
+                        style={{
+                            background: 'linear-gradient(90deg, #ff4d4d, #ff6b6b)',
+                            border: 'none',
+                            color: 'white',
+                            padding: '12px 30px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '1rem'
+                        }}
+                    >
+                        Kapat
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    const handleCardNumberChange = (e) => {
+        let value = e.target.value.replace(/\s/g, '');
+        if (value.length <= 16) {
+            value = value.replace(/(\d{4})/g, '$1 ').trim();
+            setCardNumber(value);
+        }
+    };
+
+    const handleExpiryChange = (e) => {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length <= 4) {
+            if (value.length >= 2) {
+                value = value.slice(0, 2) + '/' + value.slice(2);
+            }
+            setExpiryDate(value);
+        }
+    };
+
+    const handleCvvChange = (e) => {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length <= 3) setCvv(value);
+    };
+
+    const handleAmountChange = (e) => {
+        const value = e.target.value;
+        if (!isNaN(value) && value >= 0) setAmount(value);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setErrorMessage('');
+        
+        if (step === 0) {
+            if (!cardNumber || cardNumber.replace(/\s/g, '').length !== 16) {
+                setErrorMessage('Kart numarası 16 haneli olmalıdır');
+                return;
+            }
+            if (!cardHolder.trim()) {
+                setErrorMessage('Kart sahibi adı giriniz');
+                return;
+            }
+            if (!expiryDate || expiryDate.length !== 5) {
+                setErrorMessage('Geçerli bir tarih giriniz (MM/YY)');
+                return;
+            }
+            if (!cvv || cvv.length !== 3) {
+                setErrorMessage('CVV 3 haneli olmalıdır');
+                return;
+            }
+            setStep(1);
+        } else if (step === 1) {
+            if (!amount || parseFloat(amount) <= 0) {
+                setErrorMessage('Geçerli bir miktar giriniz');
+                return;
+            }
+            setIsLoading(true);
+            setTimeout(() => {
+                const newBalance = walletBalance + parseFloat(amount);
+                setWalletBalance(newBalance);
+                if (setParentBalance) setParentBalance(newBalance);
+                setSuccessMessage(`✅ ${amount} ₺ başarıyla yüklendi! Bakiye: ${newBalance.toFixed(2)} ₺`);
+                setIsLoading(false);
+                setStep(2);
+            }, 1500);
+        }
+    };
+
+    const resetForm = () => {
+        setCardNumber('');
+        setCardHolder('');
+        setExpiryDate('');
+        setCvv('');
+        setAmount('');
+        setStep(0);
+        setSuccessMessage('');
+    };
+
+    return (
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={onClose}></div>
+            <div style={{
+                background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
+                borderRadius: '20px',
+                border: '2px solid #00d2ff',
+                width: '420px',
+                zIndex: 10001,
+                position: 'relative',
+                overflow: 'hidden',
+                boxShadow: '0 0 40px rgba(0, 210, 255, 0.3)'
+            }}>
+                {/* Animated Background */}
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'radial-gradient(circle at 20% 50%, rgba(0, 210, 255, 0.1) 0%, transparent 50%)',
+                    pointerEvents: 'none'
+                }}></div>
+
+                {/* Header */}
+                <div style={{
+                    padding: '20px',
+                    borderBottom: '1px solid rgba(0, 210, 255, 0.2)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    position: 'relative',
+                    zIndex: 1
+                }}>
+                    <h2 style={{ color: '#00d2ff', margin: 0, fontSize: '1.3rem', fontWeight: 'bold' }}>
+                        💳 Sanal Cüzdan
+                    </h2>
+                    <button onClick={onClose} style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#666',
+                        fontSize: '1.5rem',
+                        cursor: 'pointer',
+                        transition: 'color 0.2s'
+                    }} onMouseEnter={(e) => e.target.style.color = '#ff4d4d'} onMouseLeave={(e) => e.target.style.color = '#666'}>
+                        ✕
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div style={{ padding: '30px', position: 'relative', zIndex: 1 }}>
+                    {step === 0 && (
+                        <div style={{ animation: 'fadeIn 0.5s ease-in' }}>
+                            <h3 style={{ color: '#eee', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>
+                                Kart Bilgilerinizi Giriniz
+                            </h3>
+                            
+                            {/* KREDİ KARTI GÖRSELI */}
+                            <div style={{
+                                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                                borderRadius: '15px',
+                                padding: '20px',
+                                marginBottom: '25px',
+                                border: '2px solid #00d2ff',
+                                boxShadow: '0 8px 32px rgba(0, 210, 255, 0.2)',
+                                minHeight: '200px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between',
+                                color: 'white',
+                                fontFamily: 'monospace',
+                                position: 'relative',
+                                overflow: 'hidden'
+                            }}>
+                                {/* Kart Arka Planı Efekti */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '-50%',
+                                    right: '-50%',
+                                    width: '200%',
+                                    height: '200%',
+                                    background: 'radial-gradient(circle, rgba(0, 210, 255, 0.1) 0%, transparent 70%)',
+                                    animation: 'pulse 3s ease-in-out infinite'
+                                }}></div>
+                                
+                                <div style={{ position: 'relative', zIndex: 1 }}>
+                                    <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '10px' }}>KART NUMARASI</div>
+                                    <div style={{
+                                        fontSize: '1.3rem',
+                                        letterSpacing: '3px',
+                                        fontWeight: 'bold',
+                                        minHeight: '30px',
+                                        animation: cardNumber ? 'slideIn 0.3s ease-out' : 'none'
+                                    }}>
+                                        {cardNumber || '•••• •••• •••• ••••'}
+                                    </div>
+                                </div>
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '5px' }}>KART SAHİBİ</div>
+                                        <div style={{
+                                            fontSize: '0.95rem',
+                                            fontWeight: 'bold',
+                                            minHeight: '20px',
+                                            animation: cardHolder ? 'slideIn 0.3s ease-out' : 'none'
+                                        }}>
+                                            {cardHolder || 'ADIM SOYADIM'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '5px' }}>SON KULLANMA</div>
+                                        <div style={{
+                                            fontSize: '0.95rem',
+                                            fontWeight: 'bold',
+                                            minHeight: '20px',
+                                            animation: expiryDate ? 'slideIn 0.3s ease-out' : 'none'
+                                        }}>
+                                            {expiryDate || 'MM/YY'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <form onSubmit={handleSubmit}>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
+                                        Kart Numarası
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="1234 5678 9012 3456"
+                                        value={cardNumber}
+                                        onChange={handleCardNumberChange}
+                                        maxLength="19"
+                                        style={{
+                                            ...inputStyle,
+                                            fontSize: '1.1rem',
+                                            letterSpacing: '2px',
+                                            fontFamily: 'monospace',
+                                            textAlign: 'center'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
+                                        Kart Sahibi
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="ADIM SOYADIM"
+                                        value={cardHolder}
+                                        onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+                                        style={inputStyle}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+                                    <div>
+                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
+                                            Son Kullanma
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="MM/YY"
+                                            value={expiryDate}
+                                            onChange={handleExpiryChange}
+                                            maxLength="5"
+                                            style={{
+                                                ...inputStyle,
+                                                marginBottom: 0,
+                                                textAlign: 'center',
+                                                fontSize: '1.1rem',
+                                                fontFamily: 'monospace'
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
+                                            CVV
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="***"
+                                            value={cvv}
+                                            onChange={handleCvvChange}
+                                            maxLength="3"
+                                            style={{
+                                                ...inputStyle,
+                                                marginBottom: 0,
+                                                textAlign: 'center',
+                                                fontSize: '1.1rem',
+                                                fontFamily: 'monospace'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <button type="submit" style={{
+                                    ...btnStyle,
+                                    background: 'linear-gradient(90deg, #00d2ff, #007aff)',
+                                    fontSize: '1rem',
+                                    padding: '12px'
+                                }}>
+                                    Devam Et →
+                                </button>
+                            </form>
+                        </div>
+                    )}
+
+                    {step === 1 && (
+                        <div style={{ animation: 'slideIn 0.5s ease-out' }}>
+                            <h3 style={{ color: '#eee', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>
+                                Para Yükle
+                            </h3>
+                            <div style={{
+                                background: 'rgba(0, 210, 255, 0.1)',
+                                border: '2px solid #00d2ff',
+                                borderRadius: '12px',
+                                padding: '15px',
+                                marginBottom: '20px',
+                                textAlign: 'center'
+                            }}>
+                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>
+                                    Mevcut Bakiye
+                                </div>
+                                <div style={{ color: '#00ff88', fontSize: '1.8rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                                    {walletBalance.toFixed(2)} ₺
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleSubmit}>
+                                <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
+                                    Yüklenecek Miktar (₺)
+                                </label>
+                                <input
+                                    type="number"
+                                    placeholder="100"
+                                    value={amount}
+                                    onChange={handleAmountChange}
+                                    min="1"
+                                    step="1"
+                                    style={{
+                                        ...inputStyle,
+                                        fontSize: '1.3rem',
+                                        textAlign: 'center',
+                                        fontWeight: 'bold'
+                                    }}
+                                />
+
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(3, 1fr)',
+                                    gap: '8px',
+                                    marginBottom: '20px'
+                                }}>
+                                    {[50, 100, 250].map(val => (
+                                        <button
+                                            key={val}
+                                            type="button"
+                                            onClick={() => setAmount(val.toString())}
+                                            style={{
+                                                background: amount === val.toString() ? '#00d2ff' : 'rgba(0, 210, 255, 0.2)',
+                                                border: '1px solid #00d2ff',
+                                                color: amount === val.toString() ? '#000' : '#00d2ff',
+                                                padding: '10px',
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                fontWeight: 'bold',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            {val} ₺
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStep(0)}
+                                        style={{
+                                            background: 'transparent',
+                                            border: '1px solid #666',
+                                            color: '#888',
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            fontWeight: 'bold'
+                                        }}
+                                    >
+                                        ← Geri
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isLoading}
+                                        style={{
+                                            ...btnStyle,
+                                            background: isLoading ? '#666' : 'linear-gradient(90deg, #00ff88, #00d2ff)',
+                                            color: isLoading ? '#999' : '#000',
+                                            opacity: isLoading ? 0.7 : 1
+                                        }}
+                                    >
+                                        {isLoading ? '⏳ İşleniyor...' : '✓ Yükle'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div style={{
+                            textAlign: 'center',
+                            animation: 'scaleIn 0.6s ease-out'
+                        }}>
+                            <div style={{
+                                fontSize: '4rem',
+                                marginBottom: '15px',
+                                animation: 'bounce 0.6s ease-out'
+                            }}>
+                                ✅
+                            </div>
+                            <h3 style={{ color: '#00ff88', marginTop: 0, marginBottom: '10px' }}>
+                                Başarılı!
+                            </h3>
+                            <p style={{ color: '#eee', marginBottom: '20px', fontSize: '1rem' }}>
+                                {successMessage}
+                            </p>
+                            <div style={{
+                                background: 'rgba(0, 255, 136, 0.1)',
+                                border: '1px solid #00ff88',
+                                borderRadius: '8px',
+                                padding: '15px',
+                                marginBottom: '20px'
+                            }}>
+                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>
+                                    Yeni Bakiye
+                                </div>
+                                <div style={{ color: '#00ff88', fontSize: '1.6rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                                    {walletBalance.toFixed(2)} ₺
+                                </div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <button
+                                    onClick={resetForm}
+                                    style={{
+                                        ...btnStyle,
+                                        background: 'linear-gradient(90deg, #00d2ff, #007aff)'
+                                    }}
+                                >
+                                    Yeniden Yükle
+                                </button>
+                                <button
+                                    onClick={onClose}
+                                    style={{
+                                        background: 'transparent',
+                                        border: '1px solid #00ff88',
+                                        color: '#00ff88',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    Kapat
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <style>{`
+                    @keyframes fadeIn {
+                        from { opacity: 0; }
+                        to { opacity: 1; }
+                    }
+                    @keyframes slideIn {
+                        from { transform: translateX(20px); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                    @keyframes scaleIn {
+                        from { transform: scale(0.8); opacity: 0; }
+                        to { transform: scale(1); opacity: 1; }
+                    }
+                    @keyframes bounce {
+                        0%, 100% { transform: scale(1); }
+                        50% { transform: scale(1.2); }
+                    }
+                `}</style>
             </div>
         </div>
     );
