@@ -42,6 +42,24 @@ export const AuthService = {
         }
     },
 
+    sendVerificationCode: async (username) => {
+        try {
+            const res = await axios.post(`${API_URL}/send-code`, { username });
+            return res.data;
+        } catch (error) {
+            throw { message: error.response?.data?.message || 'Kod gönderilemedi.' };
+        }
+    },
+
+    verifyAndUpdateProfile: async (data) => {
+        try {
+            const res = await axios.post(`${API_URL}/verify-update`, data);
+            return res.data;
+        } catch (error) {
+            throw { message: error.response?.data?.message || 'Duğrulama başarısız.' };
+        }
+    },
+
 
     updateProfile: async (currentUsername, currentPassword, newPass, newUsername, newEmail, newPhone, newGender, newBirthDate) => {
         try {
@@ -77,9 +95,10 @@ export const AuthService = {
     },
 
     // ALARM İŞLEMLERİ
-    setAlarm: async (username, symbol, targetPrice, currentPrice, note = "") => {
+    setAlarm: async (userId, username, symbol, targetPrice, currentPrice, note = "") => {
         try {
             const res = await axios.post(`${API_URL}/set-alarm`, { 
+                userId,
                 username, 
                 symbol, 
                 targetPrice, 
@@ -92,9 +111,9 @@ export const AuthService = {
         }
     },
 
-    getAlarms: async (username) => {
+    getAlarms: async (userId) => {
         try {
-            const res = await axios.post(`${API_URL}/get-alarms`, { username });
+            const res = await axios.post(`${API_URL}/get-alarms`, { userId });
             return res.data.alarms; 
         } catch (error) {
             console.error("Alarm getirme hatası:", error);

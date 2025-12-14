@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import TradingViewWidget from './TradingViewWidget';
 import UserAuth from './pages/UserAuth'; 
 import { AuthService } from './services/api';
+import Profile from './pages/Profile';
 
 const socket = io.connect("http://localhost:3001");
 const API_URL = "http://localhost:3001/api";
@@ -136,7 +137,7 @@ function App() {
 
         if (notif.type === 'error') finalColor = '#ff4d4d';
         else if (notif.type === 'success') finalColor = '#00ff88';
-        else if (notif.type === 'support_reply') finalColor = '#e0aaff'; 
+        else if (notif.type === 'support_reply') finalColor = '#1e1722ff'; 
 
         const CustomToastContent = () => (
             <div>
@@ -218,7 +219,7 @@ function App() {
    const fetchAlarms = async () => {
       if(currentUser) {
           try {
-            const alarms = await AuthService.getAlarms(currentUser.username);
+            const alarms = await AuthService.getAlarms(currentUser.id);
             setMyAlarms(alarms);
           } catch (e) { console.error("Alarm fetch error", e); }
       }
@@ -299,10 +300,10 @@ function App() {
       try {
           let res;
           if (editingAlarmId) {
-              res = await AuthService.updateAlarm(currentUser.username, editingAlarmId, alarmTarget, alarmCoin.price, alarmMessage);
+              res = await AuthService.updateAlarm(currentUser.id, currentUser.username, editingAlarmId, alarmTarget, alarmCoin.price, alarmMessage);
               toast.success("Alarm güncellendi!");
           } else {
-              res = await AuthService.setAlarm(currentUser.username, alarmCoin.symbol, alarmTarget, alarmCoin.price, alarmMessage);
+              res = await AuthService.setAlarm(currentUser.id, currentUser.username, alarmCoin.symbol, alarmTarget, alarmCoin.price, alarmMessage);
               toast.success("Alarm kuruldu!");
           }
           setAlarmModalOpen(false);
@@ -416,9 +417,13 @@ function App() {
                 user={currentUser} 
                 onClose={() => setShowProfileModal(false)} 
                 onUpdateSuccess={(updatedUser) => {
-                    setCurrentUser({...currentUser, username: updatedUser.username});
-                    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-                    localStorage.setItem('user', JSON.stringify({...storedUser, username: updatedUser.username}));
+                    setCurrentUser(updatedUser);
+
+                    if (updatedUser.favorites) {
+                        setFavorites(updatedUser.favorites);
+                    }
+
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
                 }}
             />
         )}
@@ -720,47 +725,39 @@ function App() {
 const modalStyle = {position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:10000, display:'flex', justifyContent:'center', alignItems:'center'};
 const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.8)'};
 
-// PROFİL DÜZENLEME MODALI
+// PROFİL DÜZENLEME MODALI 
 const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
     const [activeSection, setActiveSection] = useState(0); 
 
-    // 1. KİŞİSEL BİLGİLER
     const [newUsername, setNewUsername] = useState(user.username);
     const [newGender, setNewGender] = useState(user.gender || 'Erkek');
-    const [newBirthDate, setNewBirthDate] = useState(user.birthDate || ''); // birthDate
+    const [newBirthDate, setNewBirthDate] = useState(user.birthDate ? user.birthDate.split('T')[0] : ''); 
     const [newPass, setNewPass] = useState('');
-    
-    // 2. İLETİŞİM BİLGİLERİ
     const [newEmail, setNewEmail] = useState(user.email || '');
     const [newPhone, setNewPhone] = useState(user.phone || '');
 
-    const [currentPass, setCurrentPass] = useState('');
     const [deletePass, setDeletePass] = useState(''); 
+
     const [supportSubject, setSupportSubject] = useState('Öneri');
     const [supportMsg, setSupportMsg] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // GÜNCELLEME İŞLEMİ
-    const handleUpdate = async (e) => {
+    const [showVerifyInput, setShowVerifyInput] = useState(false);
+    const [verificationCode, setVerificationCode] = useState('');  
+    const [tempData, setTempData] = useState(null); 
+
+    const handleInitiateUpdate = async (e) => {
         e.preventDefault();
-        if (!currentPass) { toast.warn("Değişiklikleri kaydetmek için mevcut şifrenizi girmelisiniz."); return; }
-        
-        // YAŞ KONTROLÜ (Güncellerken de 18 yaş kontrolü)
+
         if(newBirthDate) {
             const birth = new Date(newBirthDate);
             const today = new Date();
             let age = today.getFullYear() - birth.getFullYear();
             const m = today.getMonth() - birth.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-                age--;
-            }
-            if (age < 18) {
-                toast.warn("Doğum tarihinize göre yaşınız 18'den küçük olamaz.");
-                return;
-            }
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+            if (age < 18) { toast.warn("Yaşınız 18'den küçük olamaz."); return; }
         }
 
-        // TELEFON KONTROLÜ
         if (newPhone && !/^5\d{9}$/.test(newPhone)) {
             toast.warn("Telefon: 5 ile başlamalı ve 10 hane olmalı.");
             return;
@@ -768,24 +765,58 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
 
         setLoading(true);
         try {
-            const res = await AuthService.updateProfile(
-                user.username, currentPass, newPass, newUsername, 
-                newEmail, newPhone, newGender, newBirthDate
-            );
+
+            await AuthService.sendVerificationCode(user.username);
+
+            setTempData({
+                newUsername, newGender, newBirthDate, newPass, newEmail, newPhone
+            });
+
+            toast.info(`📧 Doğrulama kodu ${user.email} adresine gönderildi.`);
+            setShowVerifyInput(true); 
+        } catch (err) {
+            toast.error(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFinalVerify = async () => {
+        if(!verificationCode || verificationCode.length < 6) {
+            toast.warn("Lütfen 6 haneli kodu giriniz.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const payload = {
+                username: user.username,
+                code: verificationCode,
+                ...tempData, 
+                newPassword: newPass || undefined
+            };
+
+            const res = await AuthService.verifyAndUpdateProfile(payload);
+            
             toast.success(res.message);
             if (res.user) onUpdateSuccess(res.user);
-            setCurrentPass('');
-            setNewPass('');
-        } catch (err) { toast.error(err.message); } 
-        finally { setLoading(false); }
+            
+            setShowVerifyInput(false); 
+            setVerificationCode('');
+        } catch (err) {
+            toast.error(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleDelete = async () => { 
         if(!deletePass) { toast.warn("Şifre girin."); return; }
-        if(window.confirm("Kalıcı silinecek?")) {
-            try { await AuthService.deleteAccount(user.username, deletePass); toast.info("Silindi."); window.location.reload(); } catch(e) { toast.error(e.message); }
+        if(window.confirm("Hesabınız kalıcı olarak silinecek. Emin misiniz?")) {
+            try { await AuthService.deleteAccount(user.username, deletePass); toast.info("Hesap silindi."); window.location.reload(); } catch(e) { toast.error(e.message); }
         }
     };
+
     const handleSendSupport = async (e) => {
         e.preventDefault(); if(!supportMsg) return; setLoading(true);
         try { await AuthService.sendSupport(user.username, supportSubject, supportMsg); toast.success("İletildi!"); setSupportMsg(''); } catch(e) { toast.error("Hata."); } finally { setLoading(false); }
@@ -802,7 +833,7 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
     return (
         <div style={modalStyle}>
             <div style={overlayStyle} onClick={onClose}></div>
-            <div style={{ background: '#1e1e2e', borderRadius: '16px', border: '1px solid #333', width: '360px', zIndex: 10001, maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column' }}>
+            <div style={{ background: '#1e1e2e', borderRadius: '16px', border: '1px solid #333', width: '360px', zIndex: 10001, maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column', position:'relative' }}>
                 
                 <div style={{padding:'15px', borderBottom:'1px solid #333', background:'#15151b', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                     <h3 style={{color:'#00d2ff', margin:0, fontSize:'1.1rem'}}>Profil Ayarları</h3>
@@ -813,9 +844,15 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
                 <SectionBtn id={1} icon="👤" title="Kişisel Bilgilerim" color="#00d2ff" />
                 {activeSection === 1 && (
                     <div style={{padding:'20px', background:'#1a1a24'}}>
-                        <form onSubmit={handleUpdate}>
+                        <form onSubmit={handleInitiateUpdate}>
                             <label style={labelStyle}>Kullanıcı Adı</label>
-                            <input type="text" value={newUsername} onChange={e=>setNewUsername(e.target.value)} style={inputStyle} />
+                            <input 
+                                type="text" 
+                                value={newUsername} 
+                                onChange={(e) => setNewUsername(e.target.value)}
+                                style={inputStyle}
+                                placeholder="Yeni kullanıcı adınızı girin"
+                            />
                             
                             <div style={{display:'flex', gap:'10px'}}>
                                 <div style={{flex:1}}>
@@ -831,13 +868,9 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
                             </div>
 
                             <label style={labelStyle}>Yeni Şifre</label>
-                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="Yeni şifrenizi buraya girin" style={inputStyle} />
+                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="Yeni şifreniz" style={inputStyle} />
                             
-                            <hr style={{borderColor:'#333', margin:'15px 0'}} />
-                            <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre (Zorunlu Alan)</label>
-                            <input type="password" value={currentPass} onChange={e=>setCurrentPass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d'}} placeholder="Mevcut şifrenizi buraya girin" required />
-                            
-                            <button type="submit" disabled={loading} style={btnStyle}>Kaydet</button>
+                            <button type="submit" disabled={loading} style={btnStyle}>Doğrulama Kodu Gönder</button>
                         </form>
                     </div>
                 )}
@@ -846,18 +879,14 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
                 <SectionBtn id={2} icon="📞" title="İletişim Bilgilerim" color="#f1c40f" />
                 {activeSection === 2 && (
                     <div style={{padding:'20px', background:'#1f1f1a'}}>
-                        <form onSubmit={handleUpdate}>
+                        <form onSubmit={handleInitiateUpdate}>
                             <label style={labelStyle}>E-posta Adresi</label>
                             <input type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} style={inputStyle} />
                             
                             <label style={labelStyle}>Telefon Numarası</label>
                             <input type="tel" value={newPhone} onChange={e=>setNewPhone(e.target.value)} maxLength={10} placeholder="532..." style={inputStyle} />
                             
-                            <hr style={{borderColor:'#333', margin:'15px 0'}} />
-                            <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre (Zorunlu Alan)</label>
-                            <input type="password" value={currentPass} onChange={e=>setCurrentPass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d'}} required />
-                            
-                            <button type="submit" disabled={loading} style={btnStyle}>Kaydet</button>
+                            <button type="submit" disabled={loading} style={btnStyle}>Doğrulama Kodu Gönder</button>
                         </form>
                     </div>
                 )}
@@ -867,7 +896,7 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
                 {activeSection === 3 && (
                     <div style={{padding:'20px', background:'#2a1a1a'}}>
                         <p style={{color:'#ccc', fontSize:'0.9rem', marginTop:0}}>Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
-                        <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre (Zorunlu Alan)</label>
+                        <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre</label>
                         <input type="password" value={deletePass} onChange={e=>setDeletePass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d', background:'#1a0a0a'}} />
                         <button onClick={handleDelete} style={{...btnStyle, background:'transparent', border:'1px solid #ff4d4d', color:'#ff4d4d'}}>⚠️ Hesabı Sil</button>
                     </div>
@@ -886,61 +915,43 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
                         </form>
                     </div>
                 )}
-            </div>
-        </div>
-    );
-};
 
-const GuestSupportModal = ({ onClose, type }) => { 
-    const [name, setName] = useState('');
-    const [contact, setContact] = useState(''); 
+                {/* DOĞRULAMA KODU GİRME PENCERESİ */}
+                {showVerifyInput && (
+                    <div style={{
+                        position:'absolute', top:0, left:0, width:'100%', height:'100%', 
+                        background:'#1e1e2e', zIndex:10002, display:'flex', flexDirection:'column', 
+                        justifyContent:'center', alignItems:'center', padding:'20px', boxSizing:'border-box'
+                    }}>
+                        <h3 style={{color:'#00d2ff', marginTop:0}}>🔐 Güvenlik Kontrolü</h3>
+                        <p style={{color:'#ccc', textAlign:'center', fontSize:'0.9rem'}}>
+                            <b>{user.email}</b> adresine gönderilen 6 haneli kodu giriniz.
+                        </p>
+                        
+                        <input 
+                            type="text" 
+                            maxLength={6}
+                            value={verificationCode}
+                            onChange={(e) => setVerificationCode(e.target.value)}
+                            style={{
+                                ...inputStyle, textAlign:'center', fontSize:'1.5rem', 
+                                letterSpacing:'5px', width:'200px', borderColor:'#00d2ff'
+                            }}
+                        />
 
-    const [subject, setSubject] = useState(
-        type === 'LOGIN' ? 'Giriş Sorunu' : 
-        (type === 'REGISTER' ? 'Üye Olamıyorum' : 'Genel Sorun')
-    );
-    
-    const [msg, setMsg] = useState('');
-    const [loading, setLoading] = useState(false);
+                        <button onClick={handleFinalVerify} disabled={loading} style={btnStyle}>
+                            {loading ? 'Doğrulanıyor...' : 'ONAYLA ve GÜNCELLE'}
+                        </button>
+                        
+                        <button 
+                            onClick={() => setShowVerifyInput(false)} 
+                            style={{background:'none', border:'none', color:'#666', marginTop:'15px', cursor:'pointer'}}
+                        >
+                            İptal
+                        </button>
+                    </div>
+                )}
 
-    const handleSend = async (e) => {
-        e.preventDefault();
-        if (!contact || !msg) { toast.warn("Bilgiler eksik."); return; }
-        setLoading(true);
-        try {
-            await AuthService.sendSupport(name || 'Ziyaretçi', subject, msg, contact);
-            toast.success("Mesajınız iletildi!");
-            onClose();
-        } catch (err) { toast.error("Hata."); } 
-        finally { setLoading(false); }
-    };
-
-    return (
-        <div style={modalStyle}>
-            <div style={overlayStyle} onClick={onClose}></div>
-            <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '320px', zIndex: 10001, position:'relative' }}>
-                <h3 style={{color:'#00ff88', marginTop:0, textAlign:'center'}}>
-                    {type === 'LOGIN' ? 'Giriş Sorunu' : (type === 'REGISTER' ? 'Üyelik Sorunu' : 'Bize Ulaşın')}
-                </h3>
-                
-                <form onSubmit={handleSend}>
-                    <input type="text" placeholder="Adınız (Opsiyonel)" value={name} onChange={e=>setName(e.target.value)} style={inputStyle} />
-                    <input type="text" placeholder="E-posta veya Tel" value={contact} onChange={e=>setContact(e.target.value)} style={{...inputStyle, borderColor:'#00d2ff'}} required />
-
-                    <select value={subject} onChange={e=>setSubject(e.target.value)} style={inputStyle}>
-                        <option>Üye Olamıyorum</option>
-                        <option>Giriş Sorunu</option>
-                        <option>Şifremi Unuttum</option>
-                        <option>Diğer</option>
-                    </select>
-
-                    <textarea rows="4" placeholder="Sorununuzu kısaca yazın..." value={msg} onChange={e=>setMsg(e.target.value)} style={{...inputStyle, resize:'none'}} required></textarea>
-
-                    <button type="submit" disabled={loading} style={btnStyle}>
-                        {loading ? '...' : 'Gönder'}
-                    </button>
-                </form>
-                <button onClick={onClose} style={{width:'100%', marginTop:'10px', background:'transparent', color:'#666', border:'none', cursor:'pointer'}}>Kapat</button>
             </div>
         </div>
     );
