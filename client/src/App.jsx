@@ -641,7 +641,12 @@ function App() {
   const currentUsdRate = usdCoin ? usdCoin.price : 35.00;
 
   let processedCoins = coins.filter(coin => {
-    if (activeTab === 'ALARMS') return false; 
+    // BURASI DEĞİŞTİ: Alarmlar sekmesi artık düzgün filtreliyor
+    if (activeTab === 'ALARMS') {
+        if (!currentUser) return false;
+        return myAlarms.some(alarm => alarm.symbol === coin.symbol);
+    }
+
     if (activeTab === 'FAVORITES') { if (!currentUser) return false; return favorites.includes(coin.symbol); }
     if (activeTab === 'PORTFOLIO') {
         return false;
@@ -793,6 +798,12 @@ function App() {
                       </div>
                       
                       <div style={{display:'flex', gap:'10px'}}>
+                          {/* SİL BUTONU - SADECE DÜZENLEME MODUNDA GÖRÜNÜR */}
+                          {editingAlarmId && (
+                                <button type="button" onClick={()=>{handleDeleteAlarm(editingAlarmId); setAlarmModalOpen(false);}} style={{flex:1, background:'#ff4d4d', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>
+                                    Sil
+                                </button>
+                          )}
                           <button type="button" onClick={()=>setAlarmModalOpen(false)} style={{flex:1, background:'#333', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>
                               {t('alarm_modal.btn_cancel')}
                           </button>
@@ -842,12 +853,12 @@ function App() {
                 <span style={{ 
                     color: textColor, 
                     background: bgBackground,
-                    border: borderStyle,     
-                    boxShadow: boxShadow,   
+                    border: borderStyle,      
+                    boxShadow: boxShadow,    
                     fontWeight: 'bold', 
                     fontSize: '0.75rem',
-                    padding: '2px 6px',      
-                    borderRadius: '4px',     
+                    padding: '2px 6px',       
+                    borderRadius: '4px',      
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -986,7 +997,8 @@ function App() {
 
           <div style={{ width: '100%', display: 'flex', gap: '10px', padding: '0 5px', marginBottom: '10px', overflowX: 'auto', paddingBottom:'5px' }}>
               {markets.map(m => {
-                  if (m.id === 'ALARMS' && (!currentUser || myAlarms.length === 0)) return null;
+                  // BURASI DEĞİŞTİ: Sadece giriş yapmamışsa ALARMS gizlensin
+                  if (m.id === 'ALARMS' && !currentUser) return null;
                   if (m.id === 'FAVORITES' && !currentUser) return null;
                   if (m.id === 'PORTFOLIO' && !currentUser) return null; 
                   return (
@@ -1006,7 +1018,7 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '500px 1fr', gap: '15px', width: '100%', height: 'calc(100vh - 180px)' }}>
               <div style={{ background: '#1e1e2e', borderRadius: '12px', overflow:'hidden', display:'flex', flexDirection:'column', border:'1px solid #333' }}>
                   
-                  {/* ALARM TABLOSU */}
+                  {/* ALARM TABLOSU - GÜNCELLENMİŞ HALİ (SIKIŞTIRILMIŞ) */}
                   {activeTab === 'ALARMS' ? (
                       <>
                         <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a' }}>
@@ -1018,95 +1030,54 @@ function App() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                                 <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
                                     <tr style={{ color: '#888', fontSize:'0.75rem', borderBottom:'1px solid #444' }}>
-                                        <th style={{width:'25px', padding:'10px 0', textAlign:'center', borderRight:'1px solid #444'}}>★</th>
-                                        {currentUser && activeTab === 'FAVORITES' && <th style={{width:'25px', padding:'10px 0', textAlign:'center', borderRight:'1px solid #444'}}>🔔</th>}
-                                        
-                                        {/* ENSTRÜMAN */}
-                                        <th style={{ padding: '10px 0px 10px 5px', textAlign:'left', position:'sticky', left:0, background:'#1e1e2e', zIndex:11, width:'1px', whiteSpace:'nowrap', borderRight:'1px solid #444' }}>{t('table.instrument')}</th>
-                                        
-                                        {/* FİYAT */}
-                                        <th style={{ padding: '5px 0 5px 8px', textAlign:'left', width:'70px', borderRight:'1px solid #444' }} onClick={() => handleSort('price')}>{t('table.price')}</th>
-
-                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }} onClick={() => handleSort('change')}>24S</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }}>1H</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }}>1A</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }}>3A</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }} onClick={() => handleSort('change1y')}>1Y</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }} onClick={() => handleSort('change5y')}>5Y</th>
-                                        
-                                        <th style={{ padding: '5px', textAlign:'center', width:'85px', borderRight:'1px solid #444' }}>{t('table.market_cap')}</th>
-                                        
-                                        {/* SPACER */}
-                                        <th style={{ width:'99%' }}></th>
+                                        {/* SIKIŞTIRILMIŞ SÜTUNLAR */}
+                                        <th style={{ padding: '10px', textAlign:'left', width: '200px' }}>Enstrüman</th>
+                                        <th style={{ padding: '10px', textAlign:'left', width: '120px' }}>Fiyat</th>
+                                        <th style={{ padding: '10px', textAlign:'center', width: '120px' }}>Hedef Fiyat</th>
+                                        {/* BOŞLUK DOLDURUCU (SPACER) */}
+                                        <th style={{ width: 'auto' }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {processedCoins.length > 0 ? processedCoins.map((coin) => {
-                                        const isFav = favorites.includes(coin.symbol);
-                                        const cellStyle = { borderRight: '1px solid #444' };
-
+                                        // Bu coine ait alarmı buluyoruz
+                                        const alarm = myAlarms.find(a => a.symbol === coin.symbol);
+                                        
                                         return (
                                         <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #333', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
                                             
-                                            <td style={{textAlign:'center', ...cellStyle}} onClick={(e) => handleToggleFavorite(e, coin.symbol)}>
-                                                <button className={`star-btn ${isFav ? 'active' : ''}`}>★</button>
-                                            </td>
+                                            {/* İSİM VE LOGO - DÜZENLEME BUTONU SOLDA */}
+                                            <td style={{ padding: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}> 
+                                                {/* KALEM BUTONU BURADA */}
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); openEditAlarmModal(alarm); }}
+                                                    title="Düzenle"
+                                                    style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.1rem', marginRight:'5px'}}
+                                                >
+                                                    ✏️
+                                                </button>
 
-                                            {currentUser && activeTab === 'FAVORITES' && (
-                                                <td style={{textAlign:'center', ...cellStyle}}>
-                                                    <button className="bell-btn" onClick={(e) => openNewAlarmModal(e, coin)}>🔔</button>
-                                                </td>
-                                            )}
-
-                                            <td style={{ 
-                                                padding: '8px 0px 8px 5px', 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                gap: '4px',
-                                                position:'sticky', 
-                                                left:0, 
-                                                background: selectedCoin === coin.symbol ? '#22262d' : '#1e1e2e', 
-                                                zIndex:1, 
-                                                whiteSpace: 'nowrap',
-                                                ...cellStyle 
-                                            }}> 
-                                                {coin.logo && <img src={coin.logo} alt={coin.name} width="22" height="22" style={{ borderRadius: '50%', background:'white', padding:'1px' }} onError={(e) => { e.target.style.display = 'none'; }} />}
+                                                {coin.logo && <img src={coin.logo} alt={coin.name} width="24" height="24" style={{ borderRadius: '50%', background:'white' }} />}
                                                 <div> 
-                                                    <div style={{fontWeight:'700', fontSize:'0.85rem', color:'#eee', lineHeight:'1.1'}}>
-                                                        {getLocalizedAssetName(coin)}
-                                                    </div> 
-                                                    <div style={{ fontSize: '0.65rem', color: '#777' }}>{coin.symbol}</div> 
+                                                    <div style={{fontWeight:'700', fontSize:'0.9rem', color:'#eee'}}>{coin.name}</div> 
+                                                    <div style={{ fontSize: '0.7rem', color: '#777' }}>{coin.symbol}</div> 
                                                 </div> 
                                             </td>
 
-                                            <FlashCell 
-                                                value={coin.price} 
-                                                prefix={getCurrencySymbol(coin)} 
-                                                align="left" 
-                                                width="70px" 
-                                                fontSize="0.85rem" 
-                                                style={{...cellStyle, paddingLeft:'8px'}} 
-                                            />
-
-                                            <FlashCell value={coin.change} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
-
-                                            <FlashCell value={coin.change1w} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
-
-                                            <FlashCell value={coin.change1m} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
-
-                                            <FlashCell value={coin.change3m} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
-
-                                            <FlashCell value={coin.change1y} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
-
-                                            <FlashCell value={coin.change5y} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
-
-                                            <td style={{ textAlign:'center', padding:'0 5px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.8rem', width:'85px', ...cellStyle }}>
-                                                {formatMarketCap(coin.mcap, getCurrencySymbol(coin))}
+                                            {/* GÜNCEL FİYAT */}
+                                            <td style={{ padding: '10px' }}>
+                                                <FlashCell value={coin.price} prefix={getCurrencySymbol(coin)} align="left" width="auto" style={{padding:0}} />
                                             </td>
 
+                                            {/* HEDEF FİYAT (ALARM) */}
+                                            <td style={{ padding: '10px', textAlign:'center', color: '#00d2ff', fontWeight:'bold', fontFamily:'Consolas' }}>
+                                                {alarm ? `${getCurrencySymbol(coin)}${alarm.targetPrice}` : '-'}
+                                            </td>
+
+                                            {/* SPACER HÜCRESİ */}
                                             <td></td>
                                         </tr>
-                                        )}) : ( <tr><td colSpan="12" style={{padding:'20px', textAlign:'center', color:'#666'}}>Veri yok.</td></tr> )
+                                        )}) : ( <tr><td colSpan="4" style={{padding:'20px', textAlign:'center', color:'#666'}}>Alarm bulunamadı.</td></tr> )
                                     }
                                 </tbody>
                             </table>
@@ -1180,6 +1151,27 @@ function App() {
                                                 whiteSpace: 'nowrap',
                                                 ...borderStyle
                                             }}> 
+                                                {/* YENİ EKLENEN PORTFÖY AL/SAT BUTONU */}
+                                                {activeTab === 'PORTFOLIO' && (
+                                                    <button 
+                                                        onClick={(e) => {e.stopPropagation(); openTradeModal(e, coin)}} 
+                                                        title="Al/Sat"
+                                                        style={{
+                                                            background: 'linear-gradient(90deg, #00ff88, #00cc6a)',
+                                                            color: '#000',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '2px 6px',
+                                                            fontSize: '0.8rem',
+                                                            fontWeight: 'bold',
+                                                            cursor: 'pointer',
+                                                            marginRight: '8px'
+                                                        }}
+                                                    >
+                                                        ⇄
+                                                    </button>
+                                                )}
+
                                                 {coin.logo && <img src={coin.logo} alt={coin.name} width="22" height="22" style={{ borderRadius: '50%', background:'white', padding:'1px' }} onError={(e) => { e.target.style.display = 'none'; }} />}
                                                 <div> 
                                                     <div style={{fontWeight:'700', fontSize:'0.85rem', color:'#eee', lineHeight:'1.1'}}>
@@ -1250,8 +1242,44 @@ function App() {
                         /* TRADINGVIEW GRAFİĞİ */
                         <>
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding: '0 5px', flexShrink: 0 }}>
-                                <div><h2 style={{ margin: 0, fontSize:'1.3rem', fontWeight:'700', color:'#eee' }}>{coins.find(c => c.symbol === selectedCoin)?.name || selectedCoin || "Seçim Yapın"}</h2><span style={{ color:'#777', fontSize: '0.8rem' }}>TradingView Analiz</span></div>
-                                <div style={{ display:'flex', alignItems:'center', gap:'10px'}}><div style={{textAlign:'right'}}><div style={{fontFamily:'Consolas', fontWeight:'bold', fontSize:'1.2rem'}}>{currentTime.toLocaleTimeString()}</div><div style={{fontSize:'0.75rem', color:'#888'}}>{currentTime.toLocaleDateString()}</div></div><button onClick={() => setIsFullScreen(!isFullScreen)} style={{background:'rgba(255,255,255,0.1)', border:'none', color:'white', width:'32px', height:'32px', borderRadius:'6px', cursor:'pointer'}}>⤢</button></div>
+                                
+                                {/* BAŞLIK VE BUTON */}
+                                <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+                                    <div>
+                                        <h2 style={{ margin: 0, fontSize:'1.3rem', fontWeight:'700', color:'#eee' }}>
+                                            {coins.find(c => c.symbol === selectedCoin)?.name || selectedCoin || "Seçim Yapın"}
+                                        </h2>
+                                        <span style={{ color:'#777', fontSize: '0.8rem' }}>TradingView Analiz</span>
+                                    </div>
+                                    
+                                    {/* AL/SAT BUTONU (YENİDEN EKLENDİ) */}
+                                    {selectedCoin && currentUser && (
+                                        <button 
+                                            onClick={(e) => openTradeModal(e, coins.find(c => c.symbol === selectedCoin) || {symbol: selectedCoin, price:0, name:selectedCoin})}
+                                            style={{
+                                                background: 'linear-gradient(90deg, #00ff88, #00cc6a)',
+                                                color: '#000',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                padding: '6px 16px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer',
+                                                fontSize: '0.9rem',
+                                                boxShadow: '0 0 10px rgba(0, 255, 136, 0.2)'
+                                            }}
+                                        >
+                                            ⇄ AL / SAT
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div style={{ display:'flex', alignItems:'center', gap:'10px'}}>
+                                    <div style={{textAlign:'right'}}>
+                                        <div style={{fontFamily:'Consolas', fontWeight:'bold', fontSize:'1.2rem'}}>{currentTime.toLocaleTimeString()}</div>
+                                        <div style={{fontSize:'0.75rem', color:'#888'}}>{currentTime.toLocaleDateString()}</div>
+                                    </div>
+                                    <button onClick={() => setIsFullScreen(!isFullScreen)} style={{background:'rgba(255,255,255,0.1)', border:'none', color:'white', width:'32px', height:'32px', borderRadius:'6px', cursor:'pointer'}}>⤢</button>
+                                </div>
                             </div>
                             <div style={{ flex: 1, width: '100%', minHeight: '0', overflow:'hidden', borderRadius:'8px', position:'relative' }}> 
                                 {selectedCoin ? (<div key={getTradingViewSymbol(selectedCoin)} style={{ width: '100%', height: '100%' }}><TradingViewWidget symbol={getTradingViewSymbol(selectedCoin)} theme="dark" autosize interval="D" timezone="Etc/UTC" style="1" locale="tr" toolbar_bg="#f1f3f6" enable_publishing={false} hide_side_toolbar={false} allow_symbol_change={true} /></div>) : ( <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'8px', fontSize:'0.9rem' }}>Grafik yükleniyor...</div> )}
@@ -1278,7 +1306,7 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
     const currentAssetQty = portfolio[coin.symbol] || 0;
 
     const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
-     
+      
     const effectiveRate = isTrAsset ? 1 : usdRate;
     const currencySymbol = isTrAsset ? '₺' : '$';
 
@@ -1460,7 +1488,7 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
     const [newGender, setNewGender] = useState(user.gender || 'Erkek');
     const initialBirthDate = user.birthDate ? user.birthDate.split('T')[0] : '';
     const [newBirthDate, setNewBirthDate] = useState(initialBirthDate); 
-     
+      
     const [newPass, setNewPass] = useState('');
     const [newEmail, setNewEmail] = useState(user.email || '');
     const [newPhone, setNewPhone] = useState(user.phone || '');
@@ -1535,7 +1563,7 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
             toast.warn(t('support.msg_placeholder')); 
             return; 
         } 
-         
+          
         setLoading(true);
         try { 
             await AuthService.sendSupport(user.username, supportSubject, supportMsg, user.email); 
@@ -1973,12 +2001,6 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
 
 };
 
-                <style>{`
-                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-                    @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-                    @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-                    @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
-                `}</style>
 const GuestSupportModal = ({ onClose, type }) => { 
     const { t } = useTranslation();
     const [name, setName] = useState('');
@@ -1988,7 +2010,7 @@ const GuestSupportModal = ({ onClose, type }) => {
         type === 'LOGIN' ? t('support.option_login') : 
         (type === 'REGISTER' ? t('support.option_register') : t('support.option_other'))
     );
-    
+     
     const [msg, setMsg] = useState('');
     const [loading, setLoading] = useState(false);
 
