@@ -24,7 +24,10 @@ app.use(express.json());
 
 // MONGODB BAĞLANTISI
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Atlas'a Bağlandı."))
+  .then(() => {
+      console.log("MongoDB Atlas'a Bağlandı.");
+      fixLegacyAlarms(); // Eski alarmları tamir et
+  })
   .catch((err) => console.error("MongoDB Bağlantı Hatası:", err));
 
 const transporter = nodemailer.createTransport({
@@ -44,6 +47,38 @@ function formatUptime(seconds) {
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+let userSockets = {}; // Online kullanıcıları burada tutacağız
+
+io.on('connection', (socket) => {
+    // Kullanıcı siteye girdiğinde veya giriş yaptığında bu event tetiklenir
+    socket.on('user_connected', (username) => {
+        if (username) {
+            userSockets[username] = socket.id;
+            console.log(`🔌 Kullanıcı Bağlandı: ${username} (Socket: ${socket.id})`);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        // Kullanıcı çıkınca listeden temizleyelim
+        const disconnectedUser = Object.keys(userSockets).find(key => userSockets[key] === socket.id);
+        if (disconnectedUser) {
+            delete userSockets[disconnectedUser];
+        }
+    });
+});
+
+// BİLDİRİM ŞEMASI
+const notificationSchema = new mongoose.Schema({
+    username: { type: String, required: true }, // Bildirimin sahibi
+    title: String,
+    message: String,
+    originalMessage: String, // Destek talebi için
+    type: String, // 'info', 'success', 'error', 'support_reply'
+    read: { type: Boolean, default: false },
+    date: { type: Date, default: Date.now }
+});
+const Notification = mongoose.model('Notification', notificationSchema);
 
 // ALARM KONTROL SİSTEMİ
 const checkAlarms = async (marketData) => {
@@ -401,12 +436,84 @@ app.post('/api/get-alarms', async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
 });
 
+// --- AKILLI ALARM SİLME (Smart Delete) ---
 app.post('/api/delete-alarm', async (req, res) => {
-    const { alarmId } = req.body;
+    const { userId, alarmId } = req.body; 
+
+    console.log(`Silme İsteği: AlarmID=${alarmId}, UserID=${userId}`); // Log ekledik
+
     try {
+        // 1. Önce alarmı bul
+        const alarm = await Alarm.findById(alarmId);
+        if (!alarm) {
+            console.log("Alarm veritabanında bulunamadı.");
+            return res.status(404).json({ message: 'Alarm bulunamadı.' });
+        }
+
+        // 2. Yetki Kontrolü (Smart Check)
+        // Eğer alarmın içinde userId varsa, ID'ye bak. Yoksa username'e bak.
+        const user = await User.findById(userId);
+        
+        let isOwner = false;
+        if (alarm.userId) {
+            // Yeni sistem: ID kontrolü
+            isOwner = alarm.userId.toString() === userId;
+        } else {
+            // Eski sistem: İsim kontrolü (Yedek)
+            isOwner = user && (alarm.username === user.username);
+        }
+
+        if (!isOwner) {
+            console.log("Yetkisiz işlem denemesi.");
+            return res.status(403).json({ message: 'Bu alarmı silmeye yetkiniz yok.' });
+        }
+
+        // 3. Silme İşlemi
         await Alarm.findByIdAndDelete(alarmId);
-        res.json({ success: true, message: 'Alarm silindi.' });
-    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+        console.log("Alarm başarıyla silindi.");
+        res.json({ success: true, message: 'Alarm başarıyla silindi.' });
+
+    } catch (err) { 
+        console.error("Silme Hatası Detayı:", err);
+        res.status(500).json({ message: 'Sunucu hatası.' }); 
+    }
+});
+
+// --- AKILLI ALARM GÜNCELLEME ---
+app.post('/api/update-alarm', async (req, res) => {
+    const { userId, alarmId, targetPrice, currentPrice, note } = req.body;
+    const direction = parseFloat(targetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
+
+    try {
+        const alarm = await Alarm.findById(alarmId);
+        if (!alarm) return res.status(404).json({ message: 'Alarm bulunamadı.' });
+
+        // Yetki Kontrolü
+        const user = await User.findById(userId);
+        let isOwner = false;
+        
+        if (alarm.userId) {
+            isOwner = alarm.userId.toString() === userId;
+        } else {
+            isOwner = user && (alarm.username === user.username);
+        }
+
+        if (!isOwner) return res.status(403).json({ message: 'Yetkisiz işlem.' });
+
+        // Güncelleme
+        alarm.targetPrice = targetPrice;
+        alarm.direction = direction;
+        alarm.note = note;
+        // Eğer eski alarm ise, güncellerken ID'sini de ekleyelim ki tamir olsun
+        if (!alarm.userId) alarm.userId = userId; 
+        
+        await alarm.save();
+        res.json({ success: true, message: 'Alarm güncellendi.' });
+
+    } catch (err) { 
+        console.error("Güncelleme Hatası:", err);
+        res.status(500).json({ message: 'Sunucu hatası.' }); 
+    }
 });
 
 // ADMIN İSTATİSTİKLERİ
@@ -452,29 +559,55 @@ app.post('/api/admin/delete-user', async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
 });
 
-// DESTEK SİSTEMİ
-app.post('/api/support', async (req, res) => {
-    const { username, subject, message, contactInfo } = req.body;
-    try {
-        const newMsg = new SupportMessage({
-            username: username || 'Ziyaretçi',
-            subject, message, contactInfo,
-            date: new Date().toLocaleString()
-        });
-        await newMsg.save();
-        res.json({ success: true, message: 'Mesaj iletildi.' });
-    } catch (err) { res.status(500).json({ message: 'Hata' }); }
-});
-
 app.get('/api/admin/support', async (req, res) => {
     try {
         const messages = await SupportMessage.find().sort({ createdAt: -1 });
         const formatted = messages.map(m => ({
             id: m._id,
-            ...m._doc
+            // Eğer username varsa onu, yoksa name'i kullan
+            username: m.username, 
+            name: m.name,
+            contact: m.contactInfo || m.contact, // İkisi de olabilir
+            subject: m.subject,
+            message: m.message,
+            status: m.status,
+            date: m.createdAt,
+            replies: m.reply ? [{ text: m.reply }] : [] 
         }));
         res.json({ success: true, messages: formatted });
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
+});
+
+// DESTEK MESAJI GÖNDERME (TAMİR EDİLDİ)
+app.post('/api/send-support', async (req, res) => {
+    // Frontend'den gelen veriler:
+    const { name, subject, message, contact } = req.body; 
+
+    console.log("Destek İsteği Geldi:", req.body); // Loglayalım
+
+    try {
+        // İsim veritabanında var mı diye bak (Üye kontrolü)
+        const user = await User.findOne({ username: name });
+
+        const newMsg = new SupportMessage({
+            username: user ? user.username : null, // Üye ise doldur
+            name: name, 
+            contact: contact, // Modelde 'contact' yaptık, burası da 'contact' olmalı
+            subject: subject,
+            message: message,
+            status: 'Bekliyor',
+            createdAt: new Date()
+        });
+
+        await newMsg.save();
+        
+        console.log(`✅ Destek mesajı kaydedildi. ID: ${newMsg._id}`);
+        res.json({ success: true, message: 'İletildi' });
+
+    } catch (err) {
+        console.error("Destek Hatası:", err);
+        res.status(500).json({ message: 'Hata oluştu.' });
+    }
 });
 
 app.post('/api/admin/delete-support', async (req, res) => {
@@ -485,31 +618,114 @@ app.post('/api/admin/delete-support', async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
 });
 
-app.post('/api/admin/reply-support', async (req, res) => {
-    const { id, username, replyMessage } = req.body;
+// DESTEK YANITLAMA (DB KAYITLI + SOCKET BİLDİRİMLİ)
+app.post('/api/reply-support', async (req, res) => {
+    const { id, reply } = req.body; // Frontend'den sadece id ve reply geliyor
+    
+    console.log("👉 [BACKEND] Yanıt İsteği:", { id, reply });
+
     try {
-        const msg = await SupportMessage.findById(id);
-        if(msg) {
-            msg.replies.push({ text: replyMessage, date: new Date().toLocaleString() });
-            await msg.save();
-            
-            io.emit('notification', { 
-                targetUser: username, 
-                title: 'Destek Yanıtı', 
-                message: replyMessage, 
-                type: 'info' 
+        if (!id) return res.status(400).json({ message: 'ID eksik.' });
+
+        // 1. Mesajı Güncelle (findByIdAndUpdate en güvenlisidir)
+        const supportReq = await SupportMessage.findByIdAndUpdate(
+            id,
+            { $set: { reply: reply, status: 'Yanıtlandı' } },
+            { new: true }
+        );
+
+        if (!supportReq) return res.status(404).json({ message: 'Talep bulunamadı.' });
+
+        // 2. Hedef Kullanıcıyı Bul
+        // Mesajın sahibini (username) veya misafir ismini (name) al
+        const targetUsername = supportReq.username || supportReq.name;
+
+        if (targetUsername) {
+            // --- A. VERİTABANINA BİLDİRİM KAYDET (KALICILIK İÇİN) ---
+            const newNotif = new Notification({
+                username: targetUsername,
+                title: "Destek Yanıtı", 
+                message: reply, // Yönetici yanıtı
+                originalMessage: supportReq.message, // Kullanıcının sorusu
+                type: 'support_reply'
             });
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ message: 'Mesaj bulunamadı' });
+            await newNotif.save();
+            console.log("✅ Bildirim veritabanına kaydedildi.");
+
+            // --- B. SOCKET İLE CANLI GÖNDER (ANLIK GÖRÜNÜM İÇİN) ---
+            // userSockets listesinden kullanıcının o anki ID'sini bul
+            if (typeof userSockets !== 'undefined') {
+                const targetSocketId = userSockets[targetUsername];
+                if (targetSocketId) {
+                    io.to(targetSocketId).emit('notification', {
+                        ...newNotif._doc, // Veritabanındaki kaydı gönderiyoruz
+                        // Frontend'de çeviri anahtarı kullanıyorsan title önemsiz olabilir ama yine de gönderelim
+                        title: "Destek Yanıtı" 
+                    });
+                    console.log(`🚀 Socket bildirimi gönderildi: ${targetUsername}`);
+                }
+            }
         }
-    } catch (err) { res.status(500).json({ message: 'Hata' }); }
+
+        res.json({ success: true, message: 'Yanıt gönderildi ve kaydedildi.' });
+
+    } catch (err) {
+        console.error("🔥 SUNUCU HATASI:", err);
+        res.status(500).json({ message: 'Hata: ' + err.message });
+    }
 });
 
-app.post('/api/notification', (req, res) => {
-    const { title, message, type, targetUser } = req.body;
-    io.emit('notification', { title, message, type: type || 'info', targetUser });
-    res.send({ success: true });
+// DUYURU GÖNDERME (HERKESE KAYIT + SOCKET)
+app.post('/api/notification', async (req, res) => {
+    const { title, message, type } = req.body;
+
+    try {
+        // 1. TÜM KULLANICILARI BUL (Veritabanına kayıt için)
+        // Sadece username'leri çekiyoruz ki işlem hızlı olsun
+        const allUsers = await User.find({}, 'username');
+
+        // 2. HER KULLANICI İÇİN BİLDİRİM OLUŞTUR
+        // (Toplu kayıt işlemi - Bulk Insert)
+        const notificationsToSave = allUsers.map(user => ({
+            username: user.username,
+            title: title,
+            message: message,
+            type: type || 'info',
+            date: new Date()
+        }));
+
+        if (notificationsToSave.length > 0) {
+            await Notification.insertMany(notificationsToSave);
+            console.log(`✅ ${notificationsToSave.length} kullanıcıya duyuru kaydedildi.`);
+        }
+
+        // 3. SOCKET İLE HERKESE CANLI GÖNDER
+        io.emit('notification', {
+            title,
+            message,
+            type: type || 'info',
+            date: new Date()
+        });
+        console.log("🚀 Duyuru tüm online kullanıcılara iletildi.");
+
+        res.json({ success: true, message: 'Duyuru tüm kullanıcılara gönderildi.' });
+
+    } catch (err) {
+        console.error("Duyuru Hatası:", err);
+        res.status(500).json({ message: 'Duyuru gönderilemedi.' });
+    }
+});
+
+// KULLANICININ BİLDİRİMLERİNİ GETİR
+app.get('/api/notifications/:username', async (req, res) => {
+    try {
+        const notifications = await Notification.find({ username: req.params.username })
+                                            .sort({ date: -1 }) // En yeni en üstte
+                                            .limit(20); // Son 20 bildirim
+        res.json(notifications);
+    } catch (err) {
+        res.status(500).json({ message: 'Bildirimler alınamadı.' });
+    }
 });
 
 // DOĞRULAMA KODU GÖNDER
@@ -621,6 +837,35 @@ app.post('/api/logout', async (req, res) => {
     await User.findOneAndUpdate({ username }, { isOnline: false });
     res.json({ success: true });
 });
+
+// --- 3. (ÖNEMLİ) ESKİ ALARMLARI TAMİR ETME MODÜLÜ ---
+// Bu fonksiyonu dosyanın en altına, app.listen(...) satırının üzerine yapıştır.
+// Server her başladığında eski alarmlara bakar, ID'si yoksa username'den bulup ID ekler.
+const fixLegacyAlarms = async () => {
+    try {
+        const alarmsWithoutId = await Alarm.find({ userId: { $exists: false } });
+        if (alarmsWithoutId.length > 0) {
+            console.log(`${alarmsWithoutId.length} adet eski alarm onarılıyor...`);
+            
+            for (let alarm of alarmsWithoutId) {
+                // Bu alarmın sahibini isminden bul
+                const user = await User.findOne({ username: alarm.username });
+                if (user) {
+                    alarm.userId = user._id.toString();
+                    await alarm.save();
+                    console.log(`Alarm onarıldı: ${alarm.username}`);
+                } else {
+                    // Kullanıcısı silinmişse alarmı da sil
+                    await Alarm.deleteOne({ _id: alarm._id });
+                }
+            }
+            console.log("Tüm alarmlar yeni sisteme uyarlandı!");
+        }
+    } catch (e) {
+        console.error("Onarım hatası:", e);
+    }
+};
+// Server veritabanına bağlandığında bunu çalıştıracağız (Aşağıdaki connect içine ekleyeceğiz)
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => { console.log(`Sunucu (MongoDB) aktif: http://localhost:${PORT}`); });

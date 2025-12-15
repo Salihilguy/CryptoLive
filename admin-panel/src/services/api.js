@@ -79,11 +79,11 @@ export const AuthService = {
         }
     },
 
-    adminReplySupport: async (id, username, replyMessage) => {
-        try {
-            await axios.post(`${API_URL}/admin/reply-support`, { id, username, replyMessage });
-        } catch (error) {
-            throw { message: 'Yanıt gönderilemedi.' };
-        }
-    }
+    adminReplySupport: async (id, reply) => {
+    return axios.post(
+        "http://localhost:3001/api/reply-support",
+        { id, reply }
+    );
+},
+
 };
