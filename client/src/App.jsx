@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
-import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import TradingViewWidget from './TradingViewWidget';
 import UserAuth from './pages/UserAuth'; 
 import { AuthService } from './services/api';
-import Profile from './pages/Profile';
+
+// --- CHART.JS IMPORTLARI ---
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { Pie } from 'react-chartjs-2';
+
+// Chart.js Kaydı
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 const socket = io.connect("http://localhost:3001");
-const API_URL = "http://localhost:3001/api";
 
 const formatMarketCap = (value, currencySymbol) => {
     if (!value) return '-';
@@ -19,7 +23,7 @@ const formatMarketCap = (value, currencySymbol) => {
     return `${currencySymbol}${val.toFixed(0)}`;
 };
 
-const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'right', isChange = false, width = 'auto', fontSize='0.95rem' }) => {
+const FlashCell = ({ value, prefix = '', suffix = '', align = 'right', isChange = false, width = 'auto', fontSize='0.95rem' }) => {
     const [flashClass, setFlashClass] = useState('');
     const prevValueRef = useRef(value);
 
@@ -40,7 +44,7 @@ const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'ri
     let textColor = '#888888'; 
     if (isChange) {
         const val = parseFloat(value);
-        if (val > 0) textColor = '#00ff88';      
+        if (val > 0) textColor = '#00ff88';       
         else if (val < 0) textColor = '#ff4d4d'; 
     } else {
         textColor = '#e0e0e0'; 
@@ -57,6 +61,108 @@ const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'ri
     );
 };
 
+// --- TAMİR EDİLMİŞ PORTFÖY GRAFİK BİLEŞENİ ---
+const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
+    const labels = [];
+    const dataValues = [];
+    const backgroundColors = [];
+    const borderColors = [];
+
+    const colorPalette = [
+        '#00d2ff', '#ff4d4d', '#ffbf00', '#a32bff', '#ff00ff', '#00ffea', '#ff8800', '#99ff00'
+    ];
+
+    // Nakit Bakiyeyi Ekle
+    const balance = parseFloat(walletBalance) || 0;
+    if (balance > 0) {
+        labels.push('Nakit (TL)');
+        dataValues.push(balance);
+        backgroundColors.push('#00ff88');
+        borderColors.push('#00331a');
+    }
+
+    // Portföydeki Coinleri Ekle
+    let colorIndex = 0;
+    Object.keys(portfolio).forEach((symbol) => {
+        const qty = parseFloat(portfolio[symbol]);
+        if (qty > 0) {
+            const coin = coins.find(c => c.symbol === symbol);
+            const price = coin ? coin.price : 0; 
+            const type = coin ? coin.type : '';
+            
+            const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(type) || symbol.endsWith('.IS');
+            const rate = isTrAsset ? 1 : usdRate;
+            
+            const totalValueTL = price * qty * rate;
+
+            if (totalValueTL > 0) {
+                labels.push(symbol);
+                dataValues.push(totalValueTL);
+                backgroundColors.push(colorPalette[colorIndex % colorPalette.length]);
+                borderColors.push('#1e1e2e');
+                colorIndex++;
+            }
+        }
+    });
+
+    if (dataValues.length === 0) {
+        return (
+            <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', color:'#666'}}>
+                <div style={{fontSize:'3rem', marginBottom:'10px'}}>📉</div>
+                <div>Henüz varlığınız bulunmuyor.</div>
+            </div>
+        );
+    }
+
+    const data = {
+        labels: labels,
+        datasets: [
+            {
+                label: 'Değer (TL)',
+                data: dataValues,
+                backgroundColor: backgroundColors,
+                borderColor: borderColors,
+                borderWidth: 2,
+            },
+        ],
+    };
+
+    const options = {
+        responsive: true,
+        maintainAspectRatio: false, // Bu ayar çok önemli
+        animation: {
+            duration: 0 // Animasyonu kapatmak kaybolma sorununu çözer
+        },
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: { color: '#eee', font: { size: 11 }, padding: 15 }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        let label = context.label || '';
+                        if (label) label += ': ';
+                        if (context.parsed !== null) {
+                            label += new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(context.parsed);
+                        }
+                        return label;
+                    }
+                }
+            }
+        }
+    };
+
+    // Benzersiz bir key oluşturuyoruz ki React bileşeni zorla güncellesin
+    const chartKey = JSON.stringify(dataValues); 
+
+    return (
+        <div style={{ position: 'relative', width: '90%', height: '350px', margin: '0 auto' }}>
+            <Pie key={chartKey} data={data} options={options} />
+        </div>
+    );
+};
+
 function App() {
   const [showProfileModal, setShowProfileModal] = useState(false); 
   const [currentUser, setCurrentUser] = useState(null); 
@@ -69,6 +175,12 @@ function App() {
 
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+
+  // --- TRADE STATE'LERİ ---
+  const [portfolio, setPortfolio] = useState({}); 
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeCoin, setTradeCoin] = useState(null);
+  // ------------------------
 
   const [alarmModalOpen, setAlarmModalOpen] = useState(false);
   const [alarmCoin, setAlarmCoin] = useState(null);
@@ -85,13 +197,15 @@ function App() {
   const [showGuestSupport, setShowGuestSupport] = useState(false);
   const [guestSupportType, setGuestSupportType] = useState('Genel');
 
+  // --- MENÜ SIRALAMASI ---
   const markets = [
       { id: 'CRYPTO', label: 'Kripto Piyasası' },
       { id: 'BIST', label: 'BIST 100' },
       { id: 'FOREX', label: 'Döviz' },
       { id: 'COMMODITY', label: 'Emtia' },
       { id: 'US_STOCK', label: 'ABD Borsası' },
-      { id: 'FAVORITES', label: 'Favorilerim' },
+      { id: 'FAVORITES', label: 'Favorilerim' }, 
+      { id: 'PORTFOLIO', label: 'Varlıklarım' }, 
       { id: 'ALARMS', label: 'Alarmlarım' }
   ];
 
@@ -126,7 +240,6 @@ function App() {
     socket.on("marketUpdate", handleDataUpdate);
     
     socket.on('notification', (notif) => {
-
         if (notif.targetUser) {
             if (!currentUser || currentUser.username !== notif.targetUser) {
                 return;
@@ -134,7 +247,6 @@ function App() {
         }
         
         let finalColor = '#00d2ff';
-
         if (notif.type === 'error') finalColor = '#ff4d4d';
         else if (notif.type === 'success') finalColor = '#00ff88';
         else if (notif.type === 'support_reply') finalColor = '#1e1722ff'; 
@@ -144,7 +256,6 @@ function App() {
                 <span style={{ color: finalColor, fontWeight: '800', fontSize: '1rem', display: 'block', marginBottom: '6px' }}>
                     {notif.title}
                 </span>
-
                 {notif.originalMessage ? (
                     <div style={{fontSize:'0.9rem'}}>
                         <div style={{background:'rgba(255,255,255,0.1)', padding:'6px', borderRadius:'4px', marginBottom:'6px', color:'#aaa', fontStyle:'italic'}}>
@@ -165,7 +276,6 @@ function App() {
         );
 
         const options = { position: "top-right", theme: "dark", autoClose: 10000 };
-
         if (notif.type === 'error') toast.error(CustomToastContent, options);
         else if (notif.type === 'success') toast.success(CustomToastContent, options);
         else toast.info(CustomToastContent, options);
@@ -187,13 +297,11 @@ function App() {
 
     socket.on('force_logout', (targetUsername) => {
         if (currentUser && currentUser.username === targetUsername) {
-            
             toast.error("Hesabınız yönetici tarafından silindiği için oturum sonlandırıldı.", {
                 position: "top-center",
                 autoClose: 5000,
                 theme: "dark"
             });
-
             handleLogout(); 
         }
     });
@@ -212,7 +320,7 @@ function App() {
            socket.emit('user_connected', currentUser.username);
        } else { 
            setMyAlarms([]); 
-           if (activeTab === 'ALARMS') setActiveTab('CRYPTO'); 
+           if (activeTab === 'ALARMS' || activeTab === 'PORTFOLIO') setActiveTab('CRYPTO'); 
        }
    }, [currentUser]);
 
@@ -276,6 +384,46 @@ function App() {
       setAlarmModalOpen(true);
   };
 
+    // --- ALIM SATIM HANDLERLARI ---
+    const openTradeModal = (e, coin) => {
+        e.stopPropagation();
+        if (!currentUser) {
+            toast.warn("İşlem yapmak için giriş yapmalısın!");
+            setShowUserAuth(true);
+            return;
+        }
+        setTradeCoin(coin);
+        setTradeModalOpen(true);
+    };
+
+    const handleBuyAsset = (coin, amount, totalCost) => {
+        const newBalance = walletBalance - totalCost;
+        setWalletBalance(newBalance);
+
+        setPortfolio(prev => {
+            const currentQty = prev[coin.symbol] || 0;
+            return { ...prev, [coin.symbol]: currentQty + amount };
+        });
+
+        toast.success(`Başarılı! ${amount} adet ${coin.symbol} alındı. (Tutar: ${totalCost.toFixed(2)} TL)`);
+        setTradeModalOpen(false);
+    };
+
+    const handleSellAsset = (coin, amount, totalRevenue) => {
+        const newBalance = walletBalance + totalRevenue;
+        setWalletBalance(newBalance);
+
+        setPortfolio(prev => {
+            const currentQty = prev[coin.symbol] || 0;
+            const newQty = currentQty - amount;
+            return { ...prev, [coin.symbol]: newQty };
+        });
+
+        toast.success(`Başarılı! ${amount} adet ${coin.symbol} satıldı. (Kazanç: ${totalRevenue.toFixed(2)} TL)`);
+        setTradeModalOpen(false);
+    };
+    // ------------------------------
+
     const handleLogout = async () => {
         if (currentUser) {
             try {
@@ -288,6 +436,7 @@ function App() {
         setCurrentUser(null);
         setFavorites([]);
         setMyAlarms([]);
+        setPortfolio({}); // Portföyü sıfırla
         setSelectedCoin('BTCUSDT');
         setActiveTab('CRYPTO');
       
@@ -327,7 +476,7 @@ function App() {
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  useEffect(() => { if (!currentUser && activeTab === 'FAVORITES') { setActiveTab('CRYPTO'); setSelectedCoin('BTCUSDT'); } }, [currentUser, activeTab]);
+  useEffect(() => { if (!currentUser && (activeTab === 'FAVORITES' || activeTab === 'PORTFOLIO')) { setActiveTab('CRYPTO'); setSelectedCoin('BTCUSDT'); } }, [currentUser, activeTab]);
 
   const getTradingViewSymbol = (coinInput) => {
     if (!coinInput) return 'BINANCE:BTCUSDT';
@@ -352,7 +501,7 @@ function App() {
         'GC=F': 'TVC:GOLD', 'SI=F': 'TVC:SILVER', 'CL=F': 'TVC:USOIL', 'BZ=F': 'TVC:UKOIL', 
         'HG=F': 'OANDA:XCUUSD', 'NG=F': 'CAPITALCOM:NATURALGAS',
         'GRAM-ALTIN': 'FX_IDC:XAUTRYG', 'CEYREK-ALTIN': 'FX_IDC:XAUTRYG*1.635',  
-        'YARIM-ALTIN': 'FX_IDC:XAUTRYG*3.27', 'TAM-ALTIN': 'FX_IDC:XAUTRYG*6.54', 'GRAM-GUMUS': 'FX_IDC:XAGTRYG'       
+        'YARIM-ALTIN': 'FX_IDC:XAUTRYG*3.27', 'TAM-ALTIN': 'FX_IDC:XAUTRYG*6.54', 'GRAM-GUMUS': 'FX_IDC:XAGTRYG'        
     };
 
     if (symbolMap[symbol]) return symbolMap[symbol];
@@ -368,14 +517,31 @@ function App() {
       return '$'; 
   };
 
+  // --- USD KURU ÇEKME ---
+  const usdCoin = coins.find(c => c.symbol === 'TRY=X' || c.symbol === 'USDTRY');
+  const currentUsdRate = usdCoin ? usdCoin.price : 35.00;
+
   let processedCoins = coins.filter(coin => {
     if (activeTab === 'ALARMS') return false; 
     if (activeTab === 'FAVORITES') { if (!currentUser) return false; return favorites.includes(coin.symbol); }
+    if (activeTab === 'PORTFOLIO') {
+        return false; // Portfolio logic is handled below
+    }
     if (!coin.type && activeTab === 'CRYPTO') return true;
     return coin.type === activeTab;
   });
 
-  if (searchTerm) {
+  // ÖZEL PORTFOLIO FİLTRESİ
+  if (activeTab === 'PORTFOLIO' && currentUser) {
+      const myAssets = Object.keys(portfolio).filter(k => portfolio[k] > 0);
+      processedCoins = myAssets.map(symbol => {
+          const coinData = coins.find(c => c.symbol === symbol);
+          if (!coinData) return { symbol, name: symbol, price: 0, change: 0, myQty: portfolio[symbol], type: 'UNKNOWN' };
+          return { ...coinData, myQty: portfolio[symbol] };
+      });
+  }
+
+  if (searchTerm && activeTab !== 'PORTFOLIO') {
       processedCoins = processedCoins.filter(coin => coin.name.toLowerCase().includes(searchTerm.toLowerCase()) || coin.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
   }
 
@@ -396,6 +562,16 @@ function App() {
     if (sortConfig.key === key && sortConfig.direction === 'descending') direction = 'ascending';
     setSortConfig({ key, direction });
   };
+
+  // Toplam Portföy Değeri Hesapla
+  const totalPortfolioValueTL = processedCoins.reduce((acc, coin) => {
+      if(activeTab === 'PORTFOLIO'){
+          const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
+          const rate = isTrAsset ? 1 : currentUsdRate;
+          return acc + (coin.price * coin.myQty * rate);
+      }
+      return 0;
+  }, 0);
 
   return (
     <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box', overflowX:'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -430,6 +606,20 @@ function App() {
 
         {showGuestSupport && <GuestSupportModal type={guestSupportType} onClose={() => setShowGuestSupport(false)} />}
         {showWalletModal && <WalletModal onClose={() => setShowWalletModal(false)} walletBalance={walletBalance} setWalletBalance={setWalletBalance} currentUser={currentUser} />}
+        
+        {/* TRADE MODAL RENDER */}
+        {tradeModalOpen && tradeCoin && (
+            <TradeModal 
+                coin={tradeCoin}
+                currentBalance={walletBalance}
+                portfolio={portfolio}
+                onClose={() => setTradeModalOpen(false)}
+                onBuy={handleBuyAsset}
+                onSell={handleSellAsset}
+                getTradingViewSymbol={getTradingViewSymbol}
+                usdRate={currentUsdRate}
+            />
+        )}
         
             {alarmModalOpen && (
           <div style={modalStyle}>
@@ -589,15 +779,17 @@ function App() {
               {markets.map(m => {
                   if (m.id === 'ALARMS' && (!currentUser || myAlarms.length === 0)) return null;
                   if (m.id === 'FAVORITES' && !currentUser) return null;
+                  if (m.id === 'PORTFOLIO' && !currentUser) return null; 
                   return (
                       <button key={m.id} className={`nav-btn ${activeTab === m.id ? 'active' : ''}`} onClick={() => { setActiveTab(m.id); setSelectedCoin(null); }}>
-                          {m.label} {m.id === 'ALARMS' ? <span style={{background:'#ff4d4d', borderRadius:'50%', padding:'0 5px', fontSize:'0.7rem', color:'white', marginLeft:'5px'}}>{myAlarms.length}</span> : ''}
+                          {m.label} 
+                          {m.id === 'ALARMS' ? <span style={{background:'#ff4d4d', borderRadius:'50%', padding:'0 5px', fontSize:'0.7rem', color:'white', marginLeft:'5px'}}>{myAlarms.length}</span> : ''}
                       </button>
                   );
               })}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '15px', width: '100%', height: 'calc(100vh - 180px)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '500px 1fr', gap: '15px', width: '100%', height: 'calc(100vh - 180px)' }}>
               <div style={{ background: '#1e1e2e', borderRadius: '12px', overflow:'hidden', display:'flex', flexDirection:'column', border:'1px solid #333' }}>
                   
                   {/* ALARM TABLOSU */}
@@ -674,13 +866,29 @@ function App() {
                                         {currentUser && activeTab === 'FAVORITES' && <th style={{width:'30px', padding:'10px 5px', textAlign:'center'}}>🔔</th>}
                                         <th style={{ padding: '10px 15px', position:'sticky', left:0, background:'#1e1e2e', zIndex:11 }}>Enstrüman</th>
                                         <th style={{ padding: '10px', textAlign:'right', width:'110px' }} onClick={() => handleSort('price')}>Fiyat</th>
-                                        <th style={{ padding: '10px', textAlign:'right', width:'90px' }} onClick={() => handleSort('change')}>24s</th>
-                                        <th style={{ padding: '10px', textAlign:'right', width:'100px' }}>Piyasa Değ.</th>
+                                        
+                                        {/* SÜTUNLARI SEKME TÜRÜNE GÖRE DEĞİŞTİR */}
+                                        {activeTab === 'PORTFOLIO' ? (
+                                            <>
+                                                <th style={{ padding: '10px', textAlign:'right', width:'120px' }}>Miktar</th>
+                                                <th style={{ padding: '10px', textAlign:'right', width:'140px' }}>Toplam Değer</th>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <th style={{ padding: '10px', textAlign:'right', width:'90px' }} onClick={() => handleSort('change')}>24s</th>
+                                                <th style={{ padding: '10px', textAlign:'right', width:'100px' }}>Piyasa Değ.</th>
+                                            </>
+                                        )}
+                                        
+                                        <th style={{ padding: '10px', textAlign: 'center', width: '80px' }}>İşlem</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {processedCoins.length > 0 ? processedCoins.map((coin) => {
                                         const isFav = favorites.includes(coin.symbol);
+                                        const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
+                                        const assetValueTL = activeTab === 'PORTFOLIO' ? (coin.price * coin.myQty * (isTrAsset ? 1 : currentUsdRate)) : 0;
+
                                         return (
                                         <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #2a2a35', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
                                             <td style={{textAlign:'center', borderRight:'1px solid #2a2a35'}} onClick={(e) => handleToggleFavorite(e, coin.symbol)}><button className={`star-btn ${isFav ? 'active' : ''}`}>★</button></td>
@@ -694,11 +902,58 @@ function App() {
                                                 <div> <div style={{ fontWeight: '700', fontSize:'0.9rem', color:'#eee' }}>{coin.name}</div> <div style={{ fontSize: '0.7rem', color: '#777' }}>{coin.symbol}</div> </div> 
                                             </td>
                                             <FlashCell value={coin.price} prefix={getCurrencySymbol(coin)} align="right" width="110px" />
-                                            <FlashCell value={coin.change} suffix="%" align="right" isChange={true} width="90px" />
-                                            <td style={{ textAlign:'right', padding:'0 10px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.85rem' }}>{formatMarketCap(coin.mcap, getCurrencySymbol(coin))}</td>
+                                            
+                                            {/* PORTFOLIO İÇİN ÖZEL HÜCRELER */}
+                                            {activeTab === 'PORTFOLIO' ? (
+                                                <>
+                                                    <td style={{ textAlign:'right', padding:'0 10px', color:'#eee', fontFamily:'Consolas', fontWeight:'bold' }}>
+                                                        {coin.myQty} <span style={{fontSize:'0.7rem', color:'#888', fontWeight:'normal'}}>Adet</span>
+                                                    </td>
+                                                    <td style={{ textAlign:'right', padding:'0 10px', color:'#00ff88', fontFamily:'Consolas', fontWeight:'bold' }}>
+                                                        {assetValueTL.toFixed(2)} ₺
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <FlashCell value={coin.change} suffix="%" align="right" isChange={true} width="90px" />
+                                                    <td style={{ textAlign:'right', padding:'0 10px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.85rem' }}>{formatMarketCap(coin.mcap, getCurrencySymbol(coin))}</td>
+                                                </>
+                                            )}
+                                            
+                                            <td style={{ textAlign: 'center', padding: '0 10px' }}>
+                                                <button 
+                                                    onClick={(e) => openTradeModal(e, coin)}
+                                                    style={{
+                                                        background: 'linear-gradient(90deg, #00d2ff, #007aff)',
+                                                        border: 'none',
+                                                        color: 'white',
+                                                        padding: '6px 12px',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 'bold',
+                                                        fontSize: '0.8rem',
+                                                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                                                    }}
+                                                >
+                                                    Al/Sat
+                                                </button>
+                                            </td>
                                         </tr>
-                                        )}) : ( <tr><td colSpan="6" style={{padding:'20px', textAlign:'center', color:'#666'}}>Veri yok.</td></tr> )
+                                        )}) : ( <tr><td colSpan="7" style={{padding:'20px', textAlign:'center', color:'#666'}}>Veri yok.</td></tr> )
                                     }
+                                    
+                                    {/* TOPLAM VARLIK ÖZETİ SATIRI */}
+                                    {activeTab === 'PORTFOLIO' && processedCoins.length > 0 && (
+                                        <tr style={{borderTop:'2px solid #333', background:'#1a1a24'}}>
+                                            <td colSpan={4} style={{textAlign:'right', padding:'15px', color:'#aaa', fontWeight:'bold'}}>
+                                                TOPLAM VARLIK DEĞERİ (TL):
+                                            </td>
+                                            <td style={{textAlign:'right', padding:'15px', color:'#00d2ff', fontFamily:'Consolas', fontSize:'1.1rem', fontWeight:'bold'}}>
+                                                {totalPortfolioValueTL.toFixed(2)} ₺
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -706,15 +961,40 @@ function App() {
                   )}
               </div>
 
-              {/* GRAFİK */}
-              <div style={isFullScreen ? { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1000, background: '#1e1e2e', padding: '20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' } : { background: '#1e1e2e', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', border: '1px solid #333', position: 'relative' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding: '0 5px', flexShrink: 0 }}>
-                      <div><h2 style={{ margin: 0, fontSize:'1.3rem', fontWeight:'700', color:'#eee' }}>{coins.find(c => c.symbol === selectedCoin)?.name || selectedCoin || "Seçim Yapın"}</h2><span style={{ color:'#777', fontSize: '0.8rem' }}>TradingView Analiz</span></div>
-                      <div style={{ display:'flex', alignItems:'center', gap:'10px'}}><div style={{textAlign:'right'}}><div style={{fontFamily:'Consolas', fontWeight:'bold', fontSize:'1.2rem'}}>{currentTime.toLocaleTimeString()}</div><div style={{fontSize:'0.75rem', color:'#888'}}>{currentTime.toLocaleDateString()}</div></div><button onClick={() => setIsFullScreen(!isFullScreen)} style={{background:'rgba(255,255,255,0.1)', border:'none', color:'white', width:'32px', height:'32px', borderRadius:'6px', cursor:'pointer'}}>⤢</button></div>
-                  </div>
-                  <div style={{ flex: 1, width: '100%', minHeight: '0', overflow:'hidden', borderRadius:'8px', position:'relative' }}> 
-                    {selectedCoin ? (<div key={getTradingViewSymbol(selectedCoin)} style={{ width: '100%', height: '100%' }}><TradingViewWidget symbol={getTradingViewSymbol(selectedCoin)} theme="dark" autosize interval="D" timezone="Etc/UTC" style="1" locale="tr" toolbar_bg="#f1f3f6" enable_publishing={false} hide_side_toolbar={false} allow_symbol_change={true} /></div>) : ( <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'8px', fontSize:'0.9rem' }}>Grafik yükleniyor...</div> )}
-                  </div>
+              {/* SAĞ TARAF: GRAFİK (TradingView) VEYA DAİRE GRAFİĞİ (Portföy) */}
+              <div style={{ 
+                  background: '#1e1e2e', 
+                  borderRadius: '12px', 
+                  padding: '10px', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.2)', 
+                  border: '1px solid #333', 
+                  position: 'relative', 
+                  minHeight: '400px', // YÜKSEKLİK GARANTİSİ
+                  ...(isFullScreen ? { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1000 } : {})
+              }}>
+                  
+                  {activeTab === 'PORTFOLIO' ? (
+                        /* PORTFÖY DAİRE GRAFİĞİ */
+                        <div style={{width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px'}}>
+                            <h3 style={{color:'#eee', marginBottom:'15px'}}>Varlık Dağılımı</h3>
+                            <div style={{flex: 1, width: '100%', minHeight: '350px'}}> {/* Minimum yükseklik verildi */}
+                                <PortfolioChart portfolio={portfolio} coins={coins} walletBalance={walletBalance} usdRate={currentUsdRate} />
+                            </div>
+                        </div>
+                  ) : (
+                        /* TRADINGVIEW GRAFİĞİ */
+                        <>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding: '0 5px', flexShrink: 0 }}>
+                                <div><h2 style={{ margin: 0, fontSize:'1.3rem', fontWeight:'700', color:'#eee' }}>{coins.find(c => c.symbol === selectedCoin)?.name || selectedCoin || "Seçim Yapın"}</h2><span style={{ color:'#777', fontSize: '0.8rem' }}>TradingView Analiz</span></div>
+                                <div style={{ display:'flex', alignItems:'center', gap:'10px'}}><div style={{textAlign:'right'}}><div style={{fontFamily:'Consolas', fontWeight:'bold', fontSize:'1.2rem'}}>{currentTime.toLocaleTimeString()}</div><div style={{fontSize:'0.75rem', color:'#888'}}>{currentTime.toLocaleDateString()}</div></div><button onClick={() => setIsFullScreen(!isFullScreen)} style={{background:'rgba(255,255,255,0.1)', border:'none', color:'white', width:'32px', height:'32px', borderRadius:'6px', cursor:'pointer'}}>⤢</button></div>
+                            </div>
+                            <div style={{ flex: 1, width: '100%', minHeight: '0', overflow:'hidden', borderRadius:'8px', position:'relative' }}> 
+                                {selectedCoin ? (<div key={getTradingViewSymbol(selectedCoin)} style={{ width: '100%', height: '100%' }}><TradingViewWidget symbol={getTradingViewSymbol(selectedCoin)} theme="dark" autosize interval="D" timezone="Etc/UTC" style="1" locale="tr" toolbar_bg="#f1f3f6" enable_publishing={false} hide_side_toolbar={false} allow_symbol_change={true} /></div>) : ( <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'8px', fontSize:'0.9rem' }}>Grafik yükleniyor...</div> )}
+                            </div>
+                        </>
+                  )}
               </div>
           </div>
       </div>
@@ -724,6 +1004,189 @@ function App() {
 
 const modalStyle = {position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:10000, display:'flex', justifyContent:'center', alignItems:'center'};
 const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.8)'};
+
+// TRADE MODAL (Düzeltilmiş ve USD Hesaplamalı)
+const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, getTradingViewSymbol, usdRate }) => {
+    const [mode, setMode] = useState('BUY'); 
+    const [amount, setAmount] = useState(''); 
+    const [totalPriceUsd, setTotalPriceUsd] = useState(0); 
+    const [totalPriceTL, setTotalPriceTL] = useState(0);
+
+    const currentAssetQty = portfolio[coin.symbol] || 0;
+
+    const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
+    
+    const effectiveRate = isTrAsset ? 1 : usdRate;
+    const currencySymbol = isTrAsset ? '₺' : '$';
+
+    useEffect(() => {
+        const val = parseFloat(amount);
+        if (!isNaN(val) && val > 0) {
+            const rawPrice = val * coin.price; 
+            setTotalPriceUsd(rawPrice);
+            setTotalPriceTL(rawPrice * effectiveRate); 
+        } else {
+            setTotalPriceUsd(0);
+            setTotalPriceTL(0);
+        }
+    }, [amount, coin.price, effectiveRate]);
+
+    const handleTransaction = (e) => {
+        e.preventDefault();
+        if (!amount || parseFloat(amount) <= 0) {
+            toast.warn("Geçerli bir miktar girin.");
+            return;
+        }
+
+        if (mode === 'BUY') {
+            if (totalPriceTL > currentBalance) {
+                toast.error(`Yetersiz Bakiye! Gereken: ${totalPriceTL.toFixed(2)} ₺`);
+                return;
+            }
+            onBuy(coin, parseFloat(amount), totalPriceTL);
+        } else {
+            if (parseFloat(amount) > currentAssetQty) {
+                toast.error(`Yetersiz ${coin.symbol} bakiyesi!`);
+                return;
+            }
+            onSell(coin, parseFloat(amount), totalPriceTL);
+        }
+    };
+
+    const setMax = () => {
+        if (mode === 'BUY') {
+            const maxBuy = currentBalance / (coin.price * effectiveRate);
+            setAmount(maxBuy.toFixed(4)); 
+        } else {
+            setAmount(currentAssetQty.toString());
+        }
+    };
+
+    return (
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={onClose}></div>
+            <div style={{
+                background: '#1e1e2e',
+                borderRadius: '16px',
+                border: `2px solid ${mode === 'BUY' ? '#00ff88' : '#ff4d4d'}`,
+                width: '900px', 
+                height: '600px',
+                zIndex: 10001,
+                position: 'relative',
+                display: 'flex',
+                overflow: 'hidden',
+                boxShadow: `0 0 50px ${mode === 'BUY' ? 'rgba(0, 255, 136, 0.2)' : 'rgba(255, 77, 77, 0.2)'}`
+            }}>
+                {/* SOL TARAF - GRAFİK */}
+                <div style={{ flex: 2, borderRight: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ padding: '10px', background: '#15151b', borderBottom: '1px solid #333' }}>
+                        <span style={{ fontWeight: 'bold', color: '#eee' }}>{coin.name} ({coin.symbol})</span>
+                        {!isTrAsset && <span style={{float:'right', color:'#00d2ff', fontSize:'0.8rem'}}>Kur: {usdRate.toFixed(2)} ₺</span>}
+                    </div>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                        <TradingViewWidget 
+                            symbol={getTradingViewSymbol(coin)} 
+                            theme="dark" 
+                            autosize 
+                            interval="D" 
+                            hide_side_toolbar={true} 
+                            style="1" 
+                            locale="tr" 
+                        />
+                    </div>
+                </div>
+
+                {/* SAĞ TARAF - İŞLEM MENÜSÜ */}
+                <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', background: '#1a1a24' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#eee' }}>İşlem Yap</h2>
+                        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
+                    </div>
+
+                    <div style={{ display: 'flex', marginBottom: '20px', background: '#111', borderRadius: '8px', padding: '4px' }}>
+                        <button 
+                            onClick={() => { setMode('BUY'); setAmount(''); }} 
+                            style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: mode === 'BUY' ? '#00ff88' : 'transparent', color: mode === 'BUY' ? '#000' : '#888', fontWeight: 'bold', cursor: 'pointer', transition: '0.3s' }}>
+                            AL
+                        </button>
+                        <button 
+                            onClick={() => { setMode('SELL'); setAmount(''); }} 
+                            style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: mode === 'SELL' ? '#ff4d4d' : 'transparent', color: mode === 'SELL' ? '#fff' : '#888', fontWeight: 'bold', cursor: 'pointer', transition: '0.3s' }}>
+                            SAT
+                        </button>
+                    </div>
+
+                    <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '0.9rem', color: '#aaa' }}>
+                            <span>Cüzdan Bakiyesi:</span>
+                            <span style={{ color: '#eee', fontWeight: 'bold' }}>{currentBalance.toFixed(2)} ₺</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#aaa' }}>
+                            <span>Sahip Olunan:</span>
+                            <span style={{ color: '#eee', fontWeight: 'bold' }}>{currentAssetQty} {coin.symbol}</span>
+                        </div>
+                    </div>
+
+                    <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#888' }}>Güncel Fiyat</div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: mode === 'BUY' ? '#00ff88' : '#ff4d4d' }}>
+                            {coin.price.toFixed(2)} <span style={{ fontSize: '1rem' }}>{currencySymbol}</span>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleTransaction} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: '#ccc', display: 'block', marginBottom: '5px' }}>
+                                Miktar ({coin.symbol})
+                                <span onClick={setMax} style={{ float: 'right', color: '#00d2ff', cursor: 'pointer', fontSize: '0.75rem' }}>MAX</span>
+                            </label>
+                            <input 
+                                type="number" 
+                                step="any"
+                                placeholder="0.00" 
+                                value={amount} 
+                                onChange={e => setAmount(e.target.value)}
+                                style={{ width: '100%', padding: '12px', background: '#0f0f13', border: '1px solid #333', color: 'white', borderRadius: '8px', fontSize: '1.1rem', outline: 'none' }} 
+                            />
+                        </div>
+
+                        {/* FİYAT HESAPLAMA GÖSTERGESİ */}
+                        <div style={{ padding: '10px', background: '#111', borderRadius: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                <span style={{ color: '#888', fontSize: '0.9rem' }}>Tutar ({currencySymbol}):</span>
+                                <span style={{ fontWeight: 'bold', color: '#ddd' }}>{totalPriceUsd.toFixed(2)} {currencySymbol}</span>
+                            </div>
+                            
+                            {!isTrAsset && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop:'1px solid #333', paddingTop:'5px' }}>
+                                    <span style={{ color: '#00d2ff', fontSize: '0.9rem' }}>İşlem Tutarı (TL):</span>
+                                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#eee' }}>{totalPriceTL.toFixed(2)} ₺</span>
+                                </div>
+                            )}
+                            {isTrAsset && (
+                                <div style={{ textAlign:'right', fontSize:'0.8rem', color:'#666' }}>*TL varlıklarında kur farkı yoktur.</div>
+                            )}
+                        </div>
+
+                        <button type="submit" style={{ 
+                            padding: '15px', 
+                            background: mode === 'BUY' ? 'linear-gradient(90deg, #00ff88, #00cc6a)' : 'linear-gradient(90deg, #ff4d4d, #cc0000)', 
+                            border: 'none', 
+                            borderRadius: '8px', 
+                            color: mode === 'BUY' ? '#000' : '#fff', 
+                            fontWeight: 'bold', 
+                            fontSize: '1.1rem', 
+                            cursor: 'pointer', 
+                            marginTop: '10px'
+                        }}>
+                            {mode === 'BUY' ? `${coin.symbol} AL` : `${coin.symbol} SAT`}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // PROFİL DÜZENLEME MODALI 
 const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
@@ -1099,18 +1562,13 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                 overflow: 'hidden',
                 boxShadow: '0 0 40px rgba(0, 210, 255, 0.3)'
             }}>
-                {/* Animated Background */}
                 <div style={{
                     position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                    top: 0, left: 0, right: 0, bottom: 0,
                     background: 'radial-gradient(circle at 20% 50%, rgba(0, 210, 255, 0.1) 0%, transparent 50%)',
                     pointerEvents: 'none'
                 }}></div>
 
-                {/* Header */}
                 <div style={{
                     padding: '20px',
                     borderBottom: '1px solid rgba(0, 210, 255, 0.2)',
@@ -1135,7 +1593,6 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                     </button>
                 </div>
 
-                {/* Content */}
                 <div style={{ padding: '30px', position: 'relative', zIndex: 1 }}>
                     {step === 0 && (
                         <div style={{ animation: 'fadeIn 0.5s ease-in' }}>
@@ -1143,7 +1600,6 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                                 Kart Bilgilerinizi Giriniz
                             </h3>
                             
-                            {/* KREDİ KARTI GÖRSELI */}
                             <div style={{
                                 background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
                                 borderRadius: '15px',
@@ -1160,13 +1616,8 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                                 position: 'relative',
                                 overflow: 'hidden'
                             }}>
-                                {/* Kart Arka Planı Efekti */}
                                 <div style={{
-                                    position: 'absolute',
-                                    top: '-50%',
-                                    right: '-50%',
-                                    width: '200%',
-                                    height: '200%',
+                                    position: 'absolute', top: '-50%', right: '-50%', width: '200%', height: '200%',
                                     background: 'radial-gradient(circle, rgba(0, 210, 255, 0.1) 0%, transparent 70%)',
                                     animation: 'pulse 3s ease-in-out infinite'
                                 }}></div>
@@ -1174,10 +1625,7 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                                 <div style={{ position: 'relative', zIndex: 1 }}>
                                     <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '10px' }}>KART NUMARASI</div>
                                     <div style={{
-                                        fontSize: '1.3rem',
-                                        letterSpacing: '3px',
-                                        fontWeight: 'bold',
-                                        minHeight: '30px',
+                                        fontSize: '1.3rem', letterSpacing: '3px', fontWeight: 'bold', minHeight: '30px',
                                         animation: cardNumber ? 'slideIn 0.3s ease-out' : 'none'
                                     }}>
                                         {cardNumber || '•••• •••• •••• ••••'}
@@ -1187,23 +1635,13 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
                                     <div>
                                         <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '5px' }}>KART SAHİBİ</div>
-                                        <div style={{
-                                            fontSize: '0.95rem',
-                                            fontWeight: 'bold',
-                                            minHeight: '20px',
-                                            animation: cardHolder ? 'slideIn 0.3s ease-out' : 'none'
-                                        }}>
+                                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', minHeight: '20px', animation: cardHolder ? 'slideIn 0.3s ease-out' : 'none' }}>
                                             {cardHolder || 'ADIM SOYADIM'}
                                         </div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '5px' }}>SON KULLANMA</div>
-                                        <div style={{
-                                            fontSize: '0.95rem',
-                                            fontWeight: 'bold',
-                                            minHeight: '20px',
-                                            animation: expiryDate ? 'slideIn 0.3s ease-out' : 'none'
-                                        }}>
+                                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', minHeight: '20px', animation: expiryDate ? 'slideIn 0.3s ease-out' : 'none' }}>
                                             {expiryDate || 'MM/YY'}
                                         </div>
                                     </div>
@@ -1212,269 +1650,79 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                             
                             <form onSubmit={handleSubmit}>
                                 <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
-                                        Kart Numarası
-                                    </label>
-                                    <input
-                                        type="text"
-                                        placeholder="1234 5678 9012 3456"
-                                        value={cardNumber}
-                                        onChange={handleCardNumberChange}
-                                        maxLength="19"
-                                        style={{
-                                            ...inputStyle,
-                                            fontSize: '1.1rem',
-                                            letterSpacing: '2px',
-                                            fontFamily: 'monospace',
-                                            textAlign: 'center'
-                                        }}
-                                    />
+                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Kart Numarası</label>
+                                    <input type="text" placeholder="1234 5678 9012 3456" value={cardNumber} onChange={handleCardNumberChange} maxLength="19" style={{ ...inputStyle, fontSize: '1.1rem', letterSpacing: '2px', fontFamily: 'monospace', textAlign: 'center' }} />
                                 </div>
 
                                 <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
-                                        Kart Sahibi
-                                    </label>
-                                    <input
-                                        type="text"
-                                        placeholder="ADIM SOYADIM"
-                                        value={cardHolder}
-                                        onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
-                                        style={inputStyle}
-                                    />
+                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Kart Sahibi</label>
+                                    <input type="text" placeholder="ADIM SOYADIM" value={cardHolder} onChange={(e) => setCardHolder(e.target.value.toUpperCase())} style={inputStyle} />
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
                                     <div>
-                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
-                                            Son Kullanma
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="MM/YY"
-                                            value={expiryDate}
-                                            onChange={handleExpiryChange}
-                                            maxLength="5"
-                                            style={{
-                                                ...inputStyle,
-                                                marginBottom: 0,
-                                                textAlign: 'center',
-                                                fontSize: '1.1rem',
-                                                fontFamily: 'monospace'
-                                            }}
-                                        />
+                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Son Kullanma</label>
+                                        <input type="text" placeholder="MM/YY" value={expiryDate} onChange={handleExpiryChange} maxLength="5" style={{ ...inputStyle, marginBottom: 0, textAlign: 'center', fontSize: '1.1rem', fontFamily: 'monospace' }} />
                                     </div>
                                     <div>
-                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
-                                            CVV
-                                        </label>
-                                        <input
-                                            type="password"
-                                            placeholder="***"
-                                            value={cvv}
-                                            onChange={handleCvvChange}
-                                            maxLength="3"
-                                            style={{
-                                                ...inputStyle,
-                                                marginBottom: 0,
-                                                textAlign: 'center',
-                                                fontSize: '1.1rem',
-                                                fontFamily: 'monospace'
-                                            }}
-                                        />
+                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>CVV</label>
+                                        <input type="password" placeholder="***" value={cvv} onChange={handleCvvChange} maxLength="3" style={{ ...inputStyle, marginBottom: 0, textAlign: 'center', fontSize: '1.1rem', fontFamily: 'monospace' }} />
                                     </div>
                                 </div>
 
-                                <button type="submit" style={{
-                                    ...btnStyle,
-                                    background: 'linear-gradient(90deg, #00d2ff, #007aff)',
-                                    fontSize: '1rem',
-                                    padding: '12px'
-                                }}>
-                                    Devam Et →
-                                </button>
+                                <button type="submit" style={{ ...btnStyle, background: 'linear-gradient(90deg, #00d2ff, #007aff)', fontSize: '1rem', padding: '12px' }}>Devam Et →</button>
                             </form>
                         </div>
                     )}
 
                     {step === 1 && (
                         <div style={{ animation: 'slideIn 0.5s ease-out' }}>
-                            <h3 style={{ color: '#eee', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>
-                                Para Yükle
-                            </h3>
-                            <div style={{
-                                background: 'rgba(0, 210, 255, 0.1)',
-                                border: '2px solid #00d2ff',
-                                borderRadius: '12px',
-                                padding: '15px',
-                                marginBottom: '20px',
-                                textAlign: 'center'
-                            }}>
-                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>
-                                    Mevcut Bakiye
-                                </div>
-                                <div style={{ color: '#00ff88', fontSize: '1.8rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                                    {walletBalance.toFixed(2)} ₺
-                                </div>
+                            <h3 style={{ color: '#eee', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>Para Yükle</h3>
+                            <div style={{ background: 'rgba(0, 210, 255, 0.1)', border: '2px solid #00d2ff', borderRadius: '12px', padding: '15px', marginBottom: '20px', textAlign: 'center' }}>
+                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>Mevcut Bakiye</div>
+                                <div style={{ color: '#00ff88', fontSize: '1.8rem', fontWeight: 'bold', fontFamily: 'monospace' }}>{walletBalance.toFixed(2)} ₺</div>
                             </div>
 
                             <form onSubmit={handleSubmit}>
-                                <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>
-                                    Yüklenecek Miktar (₺)
-                                </label>
-                                <input
-                                    type="number"
-                                    placeholder="100"
-                                    value={amount}
-                                    onChange={handleAmountChange}
-                                    min="1"
-                                    step="1"
-                                    style={{
-                                        ...inputStyle,
-                                        fontSize: '1.3rem',
-                                        textAlign: 'center',
-                                        fontWeight: 'bold'
-                                    }}
-                                />
+                                <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Yüklenecek Miktar (₺)</label>
+                                <input type="number" placeholder="100" value={amount} onChange={handleAmountChange} min="1" step="1" style={{ ...inputStyle, fontSize: '1.3rem', textAlign: 'center', fontWeight: 'bold' }} />
 
-                                <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(3, 1fr)',
-                                    gap: '8px',
-                                    marginBottom: '20px'
-                                }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
                                     {[50, 100, 250].map(val => (
-                                        <button
-                                            key={val}
-                                            type="button"
-                                            onClick={() => setAmount(val.toString())}
-                                            style={{
-                                                background: amount === val.toString() ? '#00d2ff' : 'rgba(0, 210, 255, 0.2)',
-                                                border: '1px solid #00d2ff',
-                                                color: amount === val.toString() ? '#000' : '#00d2ff',
-                                                padding: '10px',
-                                                borderRadius: '8px',
-                                                cursor: 'pointer',
-                                                fontWeight: 'bold',
-                                                transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            {val} ₺
-                                        </button>
+                                        <button key={val} type="button" onClick={() => setAmount(val.toString())} style={{ background: amount === val.toString() ? '#00d2ff' : 'rgba(0, 210, 255, 0.2)', border: '1px solid #00d2ff', color: amount === val.toString() ? '#000' : '#00d2ff', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>{val} ₺</button>
                                     ))}
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setStep(0)}
-                                        style={{
-                                            background: 'transparent',
-                                            border: '1px solid #666',
-                                            color: '#888',
-                                            padding: '10px',
-                                            borderRadius: '8px',
-                                            cursor: 'pointer',
-                                            fontWeight: 'bold'
-                                        }}
-                                    >
-                                        ← Geri
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isLoading}
-                                        style={{
-                                            ...btnStyle,
-                                            background: isLoading ? '#666' : 'linear-gradient(90deg, #00ff88, #00d2ff)',
-                                            color: isLoading ? '#999' : '#000',
-                                            opacity: isLoading ? 0.7 : 1
-                                        }}
-                                    >
-                                        {isLoading ? '⏳ İşleniyor...' : '✓ Yükle'}
-                                    </button>
+                                    <button type="button" onClick={() => setStep(0)} style={{ background: 'transparent', border: '1px solid #666', color: '#888', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>← Geri</button>
+                                    <button type="submit" disabled={isLoading} style={{ ...btnStyle, background: isLoading ? '#666' : 'linear-gradient(90deg, #00ff88, #00d2ff)', color: isLoading ? '#999' : '#000', opacity: isLoading ? 0.7 : 1 }}>{isLoading ? '⏳ İşleniyor...' : '✓ Yükle'}</button>
                                 </div>
                             </form>
                         </div>
                     )}
 
                     {step === 2 && (
-                        <div style={{
-                            textAlign: 'center',
-                            animation: 'scaleIn 0.6s ease-out'
-                        }}>
-                            <div style={{
-                                fontSize: '4rem',
-                                marginBottom: '15px',
-                                animation: 'bounce 0.6s ease-out'
-                            }}>
-                                ✅
-                            </div>
-                            <h3 style={{ color: '#00ff88', marginTop: 0, marginBottom: '10px' }}>
-                                Başarılı!
-                            </h3>
-                            <p style={{ color: '#eee', marginBottom: '20px', fontSize: '1rem' }}>
-                                {successMessage}
-                            </p>
-                            <div style={{
-                                background: 'rgba(0, 255, 136, 0.1)',
-                                border: '1px solid #00ff88',
-                                borderRadius: '8px',
-                                padding: '15px',
-                                marginBottom: '20px'
-                            }}>
-                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>
-                                    Yeni Bakiye
-                                </div>
-                                <div style={{ color: '#00ff88', fontSize: '1.6rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                                    {walletBalance.toFixed(2)} ₺
-                                </div>
+                        <div style={{ textAlign: 'center', animation: 'scaleIn 0.6s ease-out' }}>
+                            <div style={{ fontSize: '4rem', marginBottom: '15px', animation: 'bounce 0.6s ease-out' }}>✅</div>
+                            <h3 style={{ color: '#00ff88', marginTop: 0, marginBottom: '10px' }}>Başarılı!</h3>
+                            <p style={{ color: '#eee', marginBottom: '20px', fontSize: '1rem' }}>{successMessage}</p>
+                            <div style={{ background: 'rgba(0, 255, 136, 0.1)', border: '1px solid #00ff88', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>Yeni Bakiye</div>
+                                <div style={{ color: '#00ff88', fontSize: '1.6rem', fontWeight: 'bold', fontFamily: 'monospace' }}>{walletBalance.toFixed(2)} ₺</div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                <button
-                                    onClick={resetForm}
-                                    style={{
-                                        ...btnStyle,
-                                        background: 'linear-gradient(90deg, #00d2ff, #007aff)'
-                                    }}
-                                >
-                                    Yeniden Yükle
-                                </button>
-                                <button
-                                    onClick={onClose}
-                                    style={{
-                                        background: 'transparent',
-                                        border: '1px solid #00ff88',
-                                        color: '#00ff88',
-                                        padding: '10px',
-                                        borderRadius: '8px',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold'
-                                    }}
-                                >
-                                    Kapat
-                                </button>
+                                <button onClick={resetForm} style={{ ...btnStyle, background: 'linear-gradient(90deg, #00d2ff, #007aff)' }}>Yeniden Yükle</button>
+                                <button onClick={onClose} style={{ background: 'transparent', border: '1px solid #00ff88', color: '#00ff88', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kapat</button>
                             </div>
                         </div>
                     )}
                 </div>
 
                 <style>{`
-                    @keyframes fadeIn {
-                        from { opacity: 0; }
-                        to { opacity: 1; }
-                    }
-                    @keyframes slideIn {
-                        from { transform: translateX(20px); opacity: 0; }
-                        to { transform: translateX(0); opacity: 1; }
-                    }
-                    @keyframes scaleIn {
-                        from { transform: scale(0.8); opacity: 0; }
-                        to { transform: scale(1); opacity: 1; }
-                    }
-                    @keyframes bounce {
-                        0%, 100% { transform: scale(1); }
-                        50% { transform: scale(1.2); }
-                    }
+                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                    @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+                    @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+                    @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
                 `}</style>
             </div>
         </div>
