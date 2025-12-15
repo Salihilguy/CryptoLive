@@ -81,6 +81,30 @@ const AdminPanel = () => {
         }
     };
 
+    const handleReply = async (messageId) => {
+        const text = replyTexts[messageId];
+        
+        // Boş mesaj kontrolü
+        if (!text || text.trim() === "") {
+            toast.warn("Lütfen bir yanıt yazın.");
+            return;
+        }
+
+        try {
+            // ARTIK SADECE 2 VERİ GÖNDERİYORUZ: (ID, MESAJ)
+            // api.js'den username'i sildiğimiz için burası eşleşmiş oldu.
+            await AuthService.adminReplySupport(messageId, text);
+            
+            setReplyTexts({ ...replyTexts, [messageId]: '' });
+            fetchData();
+            toast.success("Yanıt gönderildi");
+        } catch (err) {
+            console.error("Yanıt hatası:", err);
+            toast.error("Mesaj gönderilemedi.");
+        }
+    };
+
+
     // ARAMA FİLTRESİ
     const filteredUsers = users.filter(user => {
         const term = searchTerm.toLowerCase();
@@ -155,9 +179,8 @@ const AdminPanel = () => {
                 }}>
                     <div style={{ flexShrink: 0 }}>
                         <h3 style={{ marginTop: 0, color: '#00d2ff', fontSize:'1rem', display:'flex', alignItems:'center', gap:'8px' }}>
-                            📢 Duyuru Paneli
+                            Duyuru Paneli
                         </h3>
-                        <p style={{ color: '#666', fontSize: '0.8rem', marginBottom: '15px' }}>Tüm kullanıcılara anlık bildirim gönder.</p>
                     </div>
 
                     <form onSubmit={handleSendBroadcast} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -169,17 +192,16 @@ const AdminPanel = () => {
                         </select>
                         
                         <label style={labelStyle}>Başlık</label>
-                        <input type="text" placeholder="Örn: Bitcoin Rallisi!" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} style={inputStyle} />
+                        <input type="text" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} style={inputStyle} />
                         
                         <label style={labelStyle}>Mesaj</label>
                         <textarea 
-                            placeholder="Mesaj içeriği..." 
                             value={broadcastMsg} 
                             onChange={(e) => setBroadcastMsg(e.target.value)} 
                             style={{ ...inputStyle, resize: 'none', flex: 1 }} 
                         />
                         
-                        <button type="submit" style={btnGradientStyle}>GÖNDER 🚀</button>
+                        <button type="submit" style={btnGradientStyle}>GÖNDER</button>
                     </form>
                 </div>
 
@@ -241,7 +263,7 @@ const AdminPanel = () => {
                 {/* SAĞ PANEL: DESTEK MESAJLARI */}
                 <div style={{ gridColumn: 'span 1', ...panelStyle, display:'flex', flexDirection:'column' }}>
                     <div style={{ paddingBottom: '10px', borderBottom: '1px solid #333', marginBottom:'10px' }}>
-                        <h3 style={{ margin: 0, color: '#00ff88', fontSize:'1rem' }}>💬 Gelen Kutusu ({supportMessages.length})</h3>
+                        <h3 style={{ margin: 0, color: '#00ff88', fontSize:'1rem' }}>Gelen Kutusu ({supportMessages.length})</h3>
                     </div>
                     
                     <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
@@ -289,7 +311,8 @@ const AdminPanel = () => {
                                                 style={{ flex:1, background:'#15151b', border:'1px solid #444', color:'white', borderRadius:'4px', padding:'5px', fontSize:'0.85rem' }}
                                             />
                                             <button 
-                                                onClick={async () => { const text = replyTexts[msg.id]; if(!text) return; await AuthService.adminReplySupport(msg.id, msg.username, text); setReplyTexts({...replyTexts, [msg.id]:''}); fetchData(); toast.success('Gönderildi'); }}
+                                                // username'i de gönderiyoruz
+                                                onClick={() => handleReply(msg.id, msg.username)} 
                                                 style={{ background:'#007aff', border:'none', borderRadius:'4px', color:'white', cursor:'pointer', fontSize:'0.9rem', padding:'0 10px' }}
                                             >
                                                 ➜

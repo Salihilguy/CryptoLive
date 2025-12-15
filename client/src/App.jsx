@@ -2,15 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useTranslation } from 'react-i18next'; 
 import TradingViewWidget from './TradingViewWidget';
 import UserAuth from './pages/UserAuth'; 
 import { AuthService } from './services/api';
-
-// --- CHART.JS IMPORTLARI ---
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 
-// Chart.js Kaydı
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const socket = io.connect("http://localhost:3001");
@@ -23,7 +21,7 @@ const formatMarketCap = (value, currencySymbol) => {
     return `${currencySymbol}${val.toFixed(0)}`;
 };
 
-const FlashCell = ({ value, prefix = '', suffix = '', align = 'right', isChange = false, width = 'auto', fontSize='0.95rem' }) => {
+const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'right', isChange = false, width = 'auto', fontSize='0.95rem', style={} }) => {
     const [flashClass, setFlashClass] = useState('');
     const prevValueRef = useRef(value);
 
@@ -44,7 +42,7 @@ const FlashCell = ({ value, prefix = '', suffix = '', align = 'right', isChange 
     let textColor = '#888888'; 
     if (isChange) {
         const val = parseFloat(value);
-        if (val > 0) textColor = '#00ff88';       
+        if (val > 0) textColor = '#00ff88';      
         else if (val < 0) textColor = '#ff4d4d'; 
     } else {
         textColor = '#e0e0e0'; 
@@ -55,13 +53,12 @@ const FlashCell = ({ value, prefix = '', suffix = '', align = 'right', isChange 
         : (typeof value === 'number' ? value.toFixed(2) : value);
 
     return (
-        <td className={`flash-cell-pro ${flashClass}`} style={{ textAlign: align, color: flashClass ? 'inherit' : textColor, width: width, minWidth: width, maxWidth: width, fontSize: fontSize }}>
+        <td className={`flash-cell-pro ${flashClass}`} style={{ textAlign: align, color: flashClass ? 'inherit' : textColor, width: width, minWidth: width, maxWidth: width, fontSize: fontSize, ...style }}>
             {displayValue !== '-' ? prefix : ''}{displayValue}{displayValue !== '-' ? suffix : ''}
         </td>
     );
 };
 
-// --- TAMİR EDİLMİŞ PORTFÖY GRAFİK BİLEŞENİ ---
 const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
     const labels = [];
     const dataValues = [];
@@ -72,7 +69,6 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
         '#00d2ff', '#ff4d4d', '#ffbf00', '#a32bff', '#ff00ff', '#00ffea', '#ff8800', '#99ff00'
     ];
 
-    // Nakit Bakiyeyi Ekle
     const balance = parseFloat(walletBalance) || 0;
     if (balance > 0) {
         labels.push('Nakit (TL)');
@@ -81,7 +77,6 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
         borderColors.push('#00331a');
     }
 
-    // Portföydeki Coinleri Ekle
     let colorIndex = 0;
     Object.keys(portfolio).forEach((symbol) => {
         const qty = parseFloat(portfolio[symbol]);
@@ -129,9 +124,9 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
 
     const options = {
         responsive: true,
-        maintainAspectRatio: false, // Bu ayar çok önemli
+        maintainAspectRatio: false, 
         animation: {
-            duration: 0 // Animasyonu kapatmak kaybolma sorununu çözer
+            duration: 0 
         },
         plugins: {
             legend: {
@@ -153,7 +148,6 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
         }
     };
 
-    // Benzersiz bir key oluşturuyoruz ki React bileşeni zorla güncellesin
     const chartKey = JSON.stringify(dataValues); 
 
     return (
@@ -176,18 +170,16 @@ function App() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
 
-  // --- TRADE STATE'LERİ ---
   const [portfolio, setPortfolio] = useState({}); 
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeCoin, setTradeCoin] = useState(null);
-  // ------------------------
 
   const [alarmModalOpen, setAlarmModalOpen] = useState(false);
   const [alarmCoin, setAlarmCoin] = useState(null);
   const [alarmTarget, setAlarmTarget] = useState('');
   const [alarmMessage, setAlarmMessage] = useState('');
   const [myAlarms, setMyAlarms] = useState([]);
-  
+   
   const [editingAlarmId, setEditingAlarmId] = useState(null);
 
   const [coins, setCoins] = useState([]);
@@ -197,23 +189,36 @@ function App() {
   const [showGuestSupport, setShowGuestSupport] = useState(false);
   const [guestSupportType, setGuestSupportType] = useState('Genel');
 
-  // --- MENÜ SIRALAMASI ---
+  const { t, i18n } = useTranslation();
+
+  const getLocalizedAssetName = (coin) => {
+      const key = `assets.${coin.symbol}`;
+      if (i18n.exists(key)) {
+          return t(key);
+      }
+      return coin.name;
+  };
+
+  const changeLanguage = (lng) => {
+      i18n.changeLanguage(lng);
+  };
+
   const markets = [
-      { id: 'CRYPTO', label: 'Kripto Piyasası' },
-      { id: 'BIST', label: 'BIST 100' },
-      { id: 'FOREX', label: 'Döviz' },
-      { id: 'COMMODITY', label: 'Emtia' },
-      { id: 'US_STOCK', label: 'ABD Borsası' },
-      { id: 'FAVORITES', label: 'Favorilerim' }, 
-      { id: 'PORTFOLIO', label: 'Varlıklarım' }, 
-      { id: 'ALARMS', label: 'Alarmlarım' }
-  ];
+      { id: 'CRYPTO', label: t('tabs.crypto') },
+      { id: 'BIST', label: t('tabs.bist') },
+      { id: 'FOREX', label: t('tabs.forex') },
+      { id: 'COMMODITY', label: t('tabs.commodity') },
+      { id: 'US_STOCK', label: t('tabs.us_stock') },
+      { id: 'FAVORITES', label: t('tabs.favorites') },
+      { id: 'ALARMS', label: t('tabs.alarms') },
+      { id: 'PORTFOLIO', label: t('tabs.portfolio') }
+  ]; 
 
   const [searchTerm, setSearchTerm] = useState(""); 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'default' }); 
   const [selectedCoin, setSelectedCoin] = useState(null); 
   const [isFullScreen, setIsFullScreen] = useState(false);
-  
+   
   const defaultSortOrder = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOGEUSDT', 'TRXUSDT', 'DOTUSDT', 'MATICUSDT', 'LTCUSDT', 'LINKUSDT', 'SHIBUSDT', 'ATOMUSDT'];
 
   useEffect(() => {
@@ -222,14 +227,35 @@ function App() {
             let newCoinsList = [...prevCoins];
             data.forEach(newCoin => {
                 const index = newCoinsList.findIndex(c => c.symbol === newCoin.symbol);
+                const generateRandomChange = (range) => (Math.random() * range * 2) - range;
+
                 if (index !== -1) {
-                    newCoinsList[index] = { ...newCoinsList[index], ...newCoin, logo: newCoin.logo || newCoinsList[index].logo };
+                    const existingCoin = newCoinsList[index];
+
+                    newCoinsList[index] = { 
+                        ...existingCoin, 
+                        ...newCoin, 
+                        logo: newCoin.logo || existingCoin.logo,
+
+                        change1w: existingCoin.change1w || generateRandomChange(8),  
+                        change1m: existingCoin.change1m || generateRandomChange(15), 
+                        change3m: existingCoin.change3m || generateRandomChange(25), 
+                        change1y: existingCoin.change1y || generateRandomChange(60), 
+                        change5y: existingCoin.change5y || generateRandomChange(150),
+                        mcap: existingCoin.mcap || (newCoin.price * (Math.random() * 1000000 + 500000))
+                    };
                 } else {
-                    const mockMarketCap = newCoin.price * (Math.random() * 1000000 + 500000); 
-                    const mock6m = (Math.random() * 40) - 15; 
-                    const mock1y = (Math.random() * 80) - 20; 
-                    const mock5y = (Math.random() * 300) - 50; 
-                    newCoinsList.push({ ...newCoin, type: newCoin.type || 'CRYPTO', mcap: mockMarketCap, change6m: mock6m, change1y: mock1y, change5y: mock5y });
+                    newCoinsList.push({ 
+                        ...newCoin, 
+                        type: newCoin.type || 'CRYPTO', 
+                        mcap: newCoin.price * (Math.random() * 1000000 + 500000), 
+                        change1w: generateRandomChange(8),
+                        change1m: generateRandomChange(15),
+                        change3m: generateRandomChange(25),
+                        change6m: generateRandomChange(40), 
+                        change1y: generateRandomChange(60), 
+                        change5y: generateRandomChange(150) 
+                    });
                 }
             });
             return newCoinsList;
@@ -238,33 +264,76 @@ function App() {
 
     socket.on("tickerUpdate", handleDataUpdate);
     socket.on("marketUpdate", handleDataUpdate);
-    
+
     socket.on('notification', (notif) => {
         if (notif.targetUser) {
-            if (!currentUser || currentUser.username !== notif.targetUser) {
-                return;
-            }
+            if (!currentUser || currentUser.username !== notif.targetUser) return;
         }
         
         let finalColor = '#00d2ff';
-        if (notif.type === 'error') finalColor = '#ff4d4d';
-        else if (notif.type === 'success') finalColor = '#00ff88';
-        else if (notif.type === 'support_reply') finalColor = '#1e1722ff'; 
+        let displayTitle = notif.title || "Bildirim"; 
+
+        if (notif.type === 'error') {
+            finalColor = '#ff4d4d'; 
+            displayTitle = "Hata";
+        } else if (notif.type === 'success') {
+            finalColor = '#00ff88'; 
+            displayTitle = "Başarılı";
+        } else if (notif.type === 'support_reply') {
+            finalColor = '#e0aaff'; 
+            displayTitle = t('support.reply_title') || "Destek Yanıtı";
+        }
 
         const CustomToastContent = () => (
-            <div>
-                <span style={{ color: finalColor, fontWeight: '800', fontSize: '1rem', display: 'block', marginBottom: '6px' }}>
-                    {notif.title}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <span style={{ 
+                    color: finalColor, 
+                    fontWeight: '800', 
+                    fontSize: '1rem', 
+                    borderBottom: `1px solid ${finalColor}`,
+                    paddingBottom: '4px',
+                    marginBottom: '4px',
+                    display: 'block' 
+                }}>
+                    {displayTitle}
                 </span>
-                {notif.originalMessage ? (
-                    <div style={{fontSize:'0.9rem'}}>
-                        <div style={{background:'rgba(255,255,255,0.1)', padding:'6px', borderRadius:'4px', marginBottom:'6px', color:'#aaa', fontStyle:'italic'}}>
-                            <span style={{fontSize:'0.7rem', display:'block', color:'#888'}}>Siz:</span>
+
+                {notif.type === 'support_reply' ? (
+                    /* DESTEK MESAJI TASARIMI */
+                    <div style={{ fontSize:'0.9rem' }}>
+                        <div style={{ 
+                            background:'rgba(255,255,255,0.05)', 
+                            padding:'8px', 
+                            borderRadius:'6px', 
+                            marginBottom:'8px', 
+                            color:'#aaa', 
+                            fontStyle:'italic',
+                            fontSize: '0.8rem'
+                        }}>
+                            <span style={{ fontWeight:'bold', display:'block', marginBottom:'2px', color:'#666' }}>
+                                {t('notifications_panel.you')}:
+                            </span>
                             "{notif.originalMessage}"
                         </div>
-                        <div style={{color:'#fff', paddingLeft:'4px', borderLeft:`2px solid ${finalColor}`}}>
-                            <span style={{fontSize:'0.7rem', display:'block', color: finalColor}}>CryptoLive Ekibi:</span>
-                            {notif.message}
+
+                        {/* Ekibin Yanıtı */}
+                        <div style={{ 
+                            paddingLeft:'10px', 
+                            borderLeft:`3px solid ${finalColor}`, 
+                            color: 'white'
+                        }}>
+                            <span style={{ 
+                                fontSize:'0.85rem', 
+                                fontWeight:'bold', 
+                                display:'block', 
+                                color: finalColor,
+                                marginBottom: '2px'
+                            }}>
+                                {t('notifications_panel.team')}:
+                            </span>
+                            <span style={{ lineHeight: '1.4', display: 'block' }}>
+                                {notif.message}
+                            </span>
                         </div>
                     </div>
                 ) : (
@@ -275,14 +344,16 @@ function App() {
             </div>
         );
 
-        const options = { position: "top-right", theme: "dark", autoClose: 10000 };
+        const options = { position: "top-right", theme: "dark", autoClose: 8000 };
+
         if (notif.type === 'error') toast.error(CustomToastContent, options);
         else if (notif.type === 'success') toast.success(CustomToastContent, options);
+        else if (notif.type === 'support_reply') toast.info(CustomToastContent, options); 
         else toast.info(CustomToastContent, options);
 
         const newNotification = {
-            id: Date.now(),
-            title: notif.title,
+            id: notif._id || Date.now(),
+            title: displayTitle,
             message: notif.message,
             originalMessage: notif.originalMessage,
             time: new Date().toLocaleTimeString(),
@@ -292,7 +363,7 @@ function App() {
         setNotifications(prev => [newNotification, ...prev]); 
         setUnreadCount(prev => prev + 1); 
 
-        if (notif.type === 'success' && currentUser) fetchAlarms();
+        if (notif.type === 'success' && currentUser) fetchAlarms && fetchAlarms();
     });
 
     socket.on('force_logout', (targetUsername) => {
@@ -309,11 +380,38 @@ function App() {
     return () => { socket.off('tickerUpdate'); socket.off('marketUpdate'); socket.off('notification'); socket.off('force_logout');};
   }, [currentUser]); 
 
+    useEffect(() => {
+        if (currentUser) {
+            AuthService.getNotifications(currentUser.username)
+                .then(data => {
+                    const formattedNotifs = data.map(n => ({
+                        id: n._id,
+                        title: n.type === 'support_reply' 
+                               ? (t('support.reply_title') || 'Destek Yanıtı') 
+                               : n.title,
+                        
+                        message: n.message,
+                        originalMessage: n.originalMessage,
+                        time: new Date(n.date).toLocaleTimeString(),
+                        type: n.type,
+                        read: n.read
+                    }));
+                    
+                    setNotifications(formattedNotifs);
+                    setUnreadCount(formattedNotifs.filter(n => !n.read).length); 
+                })
+                .catch(err => console.error("Bildirim geçmişi hatası:", err));
+        } else {
+            setNotifications([]);
+            setUnreadCount(0);
+        }
+    }, [currentUser, t]); 
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-  
+   
   useEffect(() => {
        if (currentUser) { 
            fetchAlarms(); 
@@ -327,7 +425,8 @@ function App() {
    const fetchAlarms = async () => {
       if(currentUser) {
           try {
-            const alarms = await AuthService.getAlarms(currentUser.id);
+            const activeUserId = currentUser.id || currentUser._id;
+            const alarms = await AuthService.getAlarms(activeUserId);
             setMyAlarms(alarms);
           } catch (e) { console.error("Alarm fetch error", e); }
       }
@@ -335,11 +434,15 @@ function App() {
 
   const handleDeleteAlarm = async (alarmId) => {
       if(!currentUser) return;
+      const activeUserId = currentUser.id || currentUser._id;
       try {
-        await AuthService.deleteAlarm(currentUser.username, alarmId);
-        toast.info("Alarm silindi.");
+        await AuthService.deleteAlarm(activeUserId, currentUser.username, alarmId);
+        toast.info(t('notifications.alarm_deleted'));
         fetchAlarms(); 
-      } catch (e) { toast.error("Silme hatası"); }
+      } catch (e) { 
+          console.error("Silme hatası:", e);
+          toast.error(t('notifications.process_failed')); 
+      }
   };
 
   const handleToggleFavorite = async (e, symbol) => { 
@@ -356,7 +459,7 @@ function App() {
           if (isRemoving) {
               const alarmToDelete = myAlarms.find(a => a.symbol === symbol);
               if (alarmToDelete) {
-                  await handleDeleteAlarm(alarmToDelete.id);
+                  await handleDeleteAlarm(alarmToDelete._id);
               }
           }
       }
@@ -377,14 +480,13 @@ function App() {
       if (!coin) {
           coin = { symbol: alarm.symbol, price: alarm.currentPrice || 0, name: alarm.symbol };
       }
-      setEditingAlarmId(alarm.id);
+      setEditingAlarmId(alarm._id);
       setAlarmCoin(coin);
       setAlarmTarget(alarm.targetPrice);
       setAlarmMessage(alarm.note || alarm.message || ''); 
       setAlarmModalOpen(true);
   };
 
-    // --- ALIM SATIM HANDLERLARI ---
     const openTradeModal = (e, coin) => {
         e.stopPropagation();
         if (!currentUser) {
@@ -422,7 +524,6 @@ function App() {
         toast.success(`Başarılı! ${amount} adet ${coin.symbol} satıldı. (Kazanç: ${totalRevenue.toFixed(2)} TL)`);
         setTradeModalOpen(false);
     };
-    // ------------------------------
 
     const handleLogout = async () => {
         if (currentUser) {
@@ -433,31 +534,50 @@ function App() {
             }
         }
 
+        localStorage.removeItem('user');
         setCurrentUser(null);
         setFavorites([]);
         setMyAlarms([]);
-        setPortfolio({}); // Portföyü sıfırla
+        setPortfolio({}); 
         setSelectedCoin('BTCUSDT');
         setActiveTab('CRYPTO');
-      
-        toast.info("Başarıyla çıkış yapıldı", { position: "top-right", theme: "dark" });
+        setNotifications([]); 
+        setUnreadCount(0);
+        toast.info(t('auth.logout_success'));
     };
 
   const handleSetAlarm = async (e) => {
       e.preventDefault();
       if (!alarmCoin || !alarmTarget) return;
+      
+      const activeUserId = currentUser.id || currentUser._id;
+
       try {
           let res;
           if (editingAlarmId) {
-              res = await AuthService.updateAlarm(currentUser.id, currentUser.username, editingAlarmId, alarmTarget, alarmCoin.price, alarmMessage);
-              toast.success("Alarm güncellendi!");
+              res = await AuthService.updateAlarm(
+                  activeUserId, 
+                  currentUser.username,
+                  editingAlarmId, 
+                  alarmTarget, 
+                  alarmCoin.price, 
+                  alarmMessage
+              );
+              toast.success(t('notifications.alarm_updated'));
           } else {
-              res = await AuthService.setAlarm(currentUser.id, currentUser.username, alarmCoin.symbol, alarmTarget, alarmCoin.price, alarmMessage);
-              toast.success("Alarm kuruldu!");
+              res = await AuthService.setAlarm(
+                  activeUserId, 
+                  currentUser.username, 
+                  alarmCoin.symbol, 
+                  alarmTarget, 
+                  alarmCoin.price, 
+                  alarmMessage
+              );
+              toast.success(t('notifications.alarm_created'));
           }
           setAlarmModalOpen(false);
           fetchAlarms(); 
-      } catch (err) { toast.error("İşlem başarısız."); }
+      } catch (err) { toast.error(t('notifications.process_failed')); }
   };
 
   const toggleNotifPanel = () => {
@@ -517,7 +637,6 @@ function App() {
       return '$'; 
   };
 
-  // --- USD KURU ÇEKME ---
   const usdCoin = coins.find(c => c.symbol === 'TRY=X' || c.symbol === 'USDTRY');
   const currentUsdRate = usdCoin ? usdCoin.price : 35.00;
 
@@ -525,13 +644,12 @@ function App() {
     if (activeTab === 'ALARMS') return false; 
     if (activeTab === 'FAVORITES') { if (!currentUser) return false; return favorites.includes(coin.symbol); }
     if (activeTab === 'PORTFOLIO') {
-        return false; // Portfolio logic is handled below
+        return false;
     }
     if (!coin.type && activeTab === 'CRYPTO') return true;
     return coin.type === activeTab;
   });
 
-  // ÖZEL PORTFOLIO FİLTRESİ
   if (activeTab === 'PORTFOLIO' && currentUser) {
       const myAssets = Object.keys(portfolio).filter(k => portfolio[k] > 0);
       processedCoins = myAssets.map(symbol => {
@@ -563,7 +681,6 @@ function App() {
     setSortConfig({ key, direction });
   };
 
-  // Toplam Portföy Değeri Hesapla
   const totalPortfolioValueTL = processedCoins.reduce((acc, coin) => {
       if(activeTab === 'PORTFOLIO'){
           const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
@@ -576,6 +693,33 @@ function App() {
   return (
     <div style={{ backgroundColor: '#13131a', minHeight: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box', overflowX:'hidden', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
+
+      <style>{`
+        .star-btn { background:none; border:none; color:#444; font-size:1.2rem; cursor:pointer; transition: color 0.2s; padding:0 5px; }
+        .star-btn.active { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+        .star-btn:hover { color: #fff; }
+        .bell-btn { background:none; border:none; color:#444; font-size:1.1rem; cursor:pointer; padding:0 5px; transition:0.2s; }
+        .bell-btn:hover { color: #00d2ff; transform: scale(1.1); }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1e1e2e; } ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        .flash-cell-pro { font-family: 'Consolas', monospace; font-weight: 600; padding: 6px 12px; border-radius: 6px; transition: background-color 0.5s ease-out; white-space: nowrap; }
+        .nav-btn { background: transparent; border: 1px solid #3a3a45; color: #888; padding: 8px 16px; border-radius: 16px; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+        .nav-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; box-shadow: 0 0 10px rgba(0, 210, 255, 0.3); }
+        .search-box { background: #181820; border: 1px solid #333; color: white; padding: 6px 12px; border-radius: 16px; outline: none; width: 180px; transition: all 0.3s; font-size: 0.9rem; }
+        .search-box:focus { border-color: #00d2ff; width: 220px; }
+        .search-clear-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; cursor: pointer; }
+        th { cursor: pointer; transition: color 0.2s; font-size: 0.85rem; font-weight: 600; color: #888; } th:hover { color: #00d2ff; }
+        .ticker-wrap { width: 100%; overflow: hidden; background: linear-gradient(270deg, rgba(30, 30, 50, 0.95), rgba(40, 40, 70, 0.95)); border-bottom: 1px solid rgba(0, 210, 255, 0.3); height: 45px; display: flex; align-items: center; }
+        .ticker-track { display: flex; animation: ticker-scroll 120s linear infinite; gap: 15px; padding-left: 20px; }
+        @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .ticker-card { display: flex; align-items: center; background: rgba(37, 37, 48, 0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap; font-size: 0.85rem; }
+        .badge-count { background: #ff4d4d; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; position: absolute; top: -5px; right: -5px; border: 1px solid #1e1e2e; font-weight: bold; }
+        @keyframes flashGreenPro { 0% { background-color: rgba(0, 255, 136, 0.25); color: #fff; } 100% { background-color: transparent; } }
+        @keyframes flashRedPro { 0% { background-color: rgba(255, 77, 77, 0.25); color: #fff; } 100% { background-color: transparent; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+      `}</style>
 
       {showUserAuth && <UserAuth 
             onClose={()=>setShowUserAuth(false)} 
@@ -626,28 +770,34 @@ function App() {
               <div style={overlayStyle} onClick={() => setAlarmModalOpen(false)}></div>
               <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '320px', zIndex: 10001, position:'relative', textAlign:'center' }}>
                   <h3 style={{color:'#00d2ff', margin:'0 0 10px 0'}}>
-                      {editingAlarmId ? '✏️ Alarmı Düzenle' : '🔔 Yeni Alarm Kur'}
+                      {/* BAŞLIK ÇEVİRİSİ */}
+                      {editingAlarmId ? t('alarm_modal.title_edit') : t('alarm_modal.title_create')}
                   </h3>
-                  <p style={{color:'#aaa', marginBottom:'20px'}}><strong>{alarmCoin?.name}</strong> için hedef fiyat:</p>
+                  {/* COIN İSMİ İÇİN DİNAMİK YAPI */}
+                  <p style={{color:'#aaa', marginBottom:'20px'}}><strong>{alarmCoin?.name}</strong></p>
                   
                   <div style={{background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'15px', color:'#fff', display:'flex', justifyContent:'space-between'}}>
-                      <span>Güncel:</span>
+                      <span>{t('alarm_modal.current_price')}:</span>
                       <span style={{color:'#00ff88', fontWeight:'bold'}}>{alarmCoin?.price?.toFixed(2)}</span>
                   </div>
 
                   <form onSubmit={handleSetAlarm}>
-                      <input type="number" step="any" placeholder="Hedef Fiyat" value={alarmTarget} onChange={e=>setAlarmTarget(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', fontSize:'1.1rem', textAlign:'center'}} />
-                      <input type="text" placeholder="Notun (Opsiyonel)" value={alarmMessage} onChange={e=>setAlarmMessage(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'15px', background:'#15151b', border:'1px solid #333', color:'#ddd', borderRadius:'8px', fontSize:'0.9rem'}} />
+                      <input type="number" step="any" placeholder={t('alarm_modal.target_price')} value={alarmTarget} onChange={e=>setAlarmTarget(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'10px', background:'#15151b', border:'1px solid #333', color:'white', borderRadius:'8px', fontSize:'1.1rem', textAlign:'center'}} />
+                      <input type="text" placeholder={t('alarm_modal.note_placeholder')} value={alarmMessage} onChange={e=>setAlarmMessage(e.target.value)} style={{width:'100%', padding:'10px', marginBottom:'15px', background:'#15151b', border:'1px solid #333', color:'#ddd', borderRadius:'8px', fontSize:'0.9rem'}} />
+                      
                       <div style={{marginBottom:'20px', fontSize:'0.85rem', color:'#888'}}>
                           {parseFloat(alarmTarget) > alarmCoin?.price 
-                            ? <span>Koşul: Fiyat <strong style={{color:'#00ff88'}}>YÜKSELİRSE</strong><br/>(Target &ge; Current)</span>
-                            : <span>Koşul: Fiyat <strong style={{color:'#ff4d4d'}}>DÜŞERSE</strong><br/>(Target &le; Current)</span>
+                            ? <span>{t('alarm_modal.condition_rise')}<br/>{t('alarm_modal.condition_rise_desc')}</span>
+                            : <span>{t('alarm_modal.condition_fall')}<br/>{t('alarm_modal.condition_fall_desc')}</span>
                           }
                       </div>
+                      
                       <div style={{display:'flex', gap:'10px'}}>
-                          <button type="button" onClick={()=>setAlarmModalOpen(false)} style={{flex:1, background:'#333', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>İptal</button>
+                          <button type="button" onClick={()=>setAlarmModalOpen(false)} style={{flex:1, background:'#333', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>
+                              {t('alarm_modal.btn_cancel')}
+                          </button>
                           <button type="submit" style={{flex:1, background:'linear-gradient(90deg, #00d2ff, #007aff)', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>
-                              {editingAlarmId ? 'GÜNCELLE' : 'KUR'}
+                              {editingAlarmId ? t('alarm_modal.btn_update') : t('alarm_modal.btn_create')}
                           </button>
                       </div>
                   </form>
@@ -655,30 +805,62 @@ function App() {
           </div>
       )}
 
-      <style>{`
-        .star-btn { background:none; border:none; color:#444; font-size:1.2rem; cursor:pointer; transition: color 0.2s; padding:0 5px; }
-        .star-btn.active { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
-        .star-btn:hover { color: #fff; }
-        .bell-btn { background:none; border:none; color:#444; font-size:1.1rem; cursor:pointer; padding:0 5px; transition:0.2s; }
-        .bell-btn:hover { color: #00d2ff; transform: scale(1.1); }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1e1e2e; } ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-        .flash-cell-pro { font-family: 'Consolas', monospace; font-weight: 600; padding: 6px 12px; border-radius: 6px; transition: background-color 0.5s ease-out; white-space: nowrap; }
-        .nav-btn { background: transparent; border: 1px solid #3a3a45; color: #888; padding: 8px 16px; border-radius: 16px; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
-        .nav-btn.active { background: #00d2ff; color: #000; border-color: #00d2ff; box-shadow: 0 0 10px rgba(0, 210, 255, 0.3); }
-        .search-box { background: #181820; border: 1px solid #333; color: white; padding: 6px 12px; border-radius: 16px; outline: none; width: 180px; transition: all 0.3s; font-size: 0.9rem; }
-        .search-box:focus { border-color: #00d2ff; width: 220px; }
-        .search-clear-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; cursor: pointer; }
-        th { cursor: pointer; transition: color 0.2s; font-size: 0.85rem; font-weight: 600; color: #888; } th:hover { color: #00d2ff; }
-        .ticker-wrap { width: 100%; overflow: hidden; background: linear-gradient(270deg, rgba(30, 30, 50, 0.95), rgba(40, 40, 70, 0.95)); border-bottom: 1px solid rgba(0, 210, 255, 0.3); height: 45px; display: flex; align-items: center; }
-        .ticker-track { display: flex; animation: ticker-scroll 120s linear infinite; gap: 15px; padding-left: 20px; }
-        @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .ticker-card { display: flex; align-items: center; background: rgba(37, 37, 48, 0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap; font-size: 0.85rem; }
-        .badge-count { background: #ff4d4d; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; position: absolute; top: -5px; right: -5px; border: 1px solid #1e1e2e; font-weight: bold; }
-        @keyframes flashGreenPro { 0% { background-color: rgba(0, 255, 136, 0.25); color: #fff; } 100% { background-color: transparent; } }
-        @keyframes flashRedPro { 0% { background-color: rgba(255, 77, 77, 0.25); color: #fff; } 100% { background-color: transparent; } }
-      `}</style>
+      {/* KAYAN BANT (TICKER) */}
+      <div className="ticker-wrap">
+        <div className="ticker-track">
+          {[...coins, ...coins].map((c, i) => {
+            const changeVal = parseFloat(c.change || 0);
 
-      <div className="ticker-wrap"><div className="ticker-track">{[...coins, ...coins].map((c, i) => <div key={`${c.symbol}-${i}`} className="ticker-card"><span style={{fontWeight:'700', marginRight:'8px'}}>{c.symbol}</span><span style={{fontFamily:'Consolas', marginRight:'10px'}}>{getCurrencySymbol(c)}{c.price?.toFixed(2)}</span></div>)}</div></div>
+            let textColor = '#ccc';
+            let bgBackground = 'linear-gradient(180deg, rgba(150, 150, 150, 0.3) 0%, rgba(100, 100, 100, 0.5) 100%)';
+            let borderStyle = '1px solid rgba(150, 150, 150, 0.5)';
+            let boxShadow = 'none';
+
+            if (changeVal > 0) {
+                textColor = '#00ff88';
+                bgBackground = 'linear-gradient(180deg, rgba(0, 255, 136, 0.3) 0%, rgba(0, 200, 100, 0.6) 100%)';
+                borderStyle = '1px solid rgba(0, 255, 136, 0.8)';
+                boxShadow = '0 0 5px rgba(0, 255, 136, 0.3)';
+            } else if (changeVal < 0) {
+                textColor = '#ff4d4d'; 
+                bgBackground = 'linear-gradient(180deg, rgba(255, 77, 77, 0.3) 0%, rgba(200, 50, 50, 0.6) 100%)';
+                borderStyle = '1px solid rgba(255, 77, 77, 0.8)';
+                boxShadow = '0 0 5px rgba(255, 77, 77, 0.3)';
+            }
+
+            return (
+              <div key={`${c.symbol}-${i}`} className="ticker-card" style={{ gap: '8px', alignItems: 'center' }}>
+
+                <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.9rem' }}>
+                  {c.symbol}
+                </span>
+
+                <span style={{ fontFamily: 'Consolas', color: '#ccc', fontSize: '0.85rem' }}>
+                  {getCurrencySymbol(c)}{c.price?.toFixed(2)}
+                </span>
+
+                <span style={{ 
+                    color: textColor, 
+                    background: bgBackground,
+                    border: borderStyle,     
+                    boxShadow: boxShadow,   
+                    fontWeight: 'bold', 
+                    fontSize: '0.75rem',
+                    padding: '2px 6px',      
+                    borderRadius: '4px',     
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textShadow: '0 0 2px rgba(0,0,0,0.5)' 
+                }}>
+                  {changeVal > 0 ? '' : ''}{changeVal.toFixed(2)}%
+                </span>
+
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div style={{ padding: '15px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ width: '100%', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', padding:'0 5px' }}>
@@ -708,12 +890,14 @@ function App() {
                           {unreadCount > 0 && <span className="badge-count">{unreadCount}</span>}
                       </button>
 
-                      {/* BİLDİRİM PANELİ DROPDOWN */}
-                      {showNotifPanel && (
-                          <div style={{position: 'absolute', top: '40px', right: '-50px', width: '320px', background: '#1e1e2e', border: '1px solid #444', borderRadius: '12px', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', zIndex: 1000, overflow:'hidden'}}>
+                        {/* BİLDİRİM PANELİ DROPDOWN */}
+                        {showNotifPanel && (
+                            <div style={{position: 'absolute', top: '40px', right: '-50px', width: '320px', background: '#1e1e2e', border: '1px solid #444', borderRadius: '12px', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', zIndex: 1000, overflow:'hidden'}}>
                                 <div style={{padding: '10px 15px', borderBottom: '1px solid #333', background: '#222', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                    <span style={{fontWeight: 'bold', fontSize: '0.9rem', color: '#eee'}}>Bildirimler</span>
-                                    {notifications.length > 0 && <button onClick={clearNotifications} style={{background: 'none', border: 'none', color: '#ff4d4d', fontSize: '0.8rem', cursor: 'pointer'}}>Temizle</button>}
+                                    {/* BAŞLIK ÇEVİRİSİ */}
+                                    <span style={{fontWeight: 'bold', fontSize: '0.9rem', color: '#eee'}}>{t('notifications_panel.title')}</span>
+                                    {/* BUTON ÇEVİRİSİ */}
+                                    {notifications.length > 0 && <button onClick={clearNotifications} style={{background: 'none', border: 'none', color: '#ff4d4d', fontSize: '0.8rem', cursor: 'pointer'}}>{t('notifications_panel.clear')}</button>}
                                 </div>
                                 <div style={{maxHeight: '350px', overflowY: 'auto'}}>
                                     {notifications.length > 0 ? (
@@ -739,10 +923,10 @@ function App() {
                                                 {n.originalMessage ? (
                                                     <div style={{marginTop:'5px'}}>
                                                         <div style={{background:'rgba(255,255,255,0.05)', padding:'5px', borderRadius:'4px', marginBottom:'5px', color:'#888', fontStyle:'italic', fontSize:'0.8rem'}}>
-                                                            Siz: "{n.originalMessage}"
+                                                            {t('notifications_panel.you')}: "{n.originalMessage}"
                                                         </div>
                                                         <div style={{color:'#eee'}}>
-                                                            <em>CryptoLive Ekibi</em>: {n.message}
+                                                            <em>{t('notifications_panel.team')}</em>: {n.message}
                                                         </div>
                                                     </div>
                                                 ) : (
@@ -753,25 +937,50 @@ function App() {
                                             </div>
                                         ))
                                     ) : (
-                                        <div style={{padding: '20px', textAlign: 'center', color: '#666', fontSize: '0.9rem'}}>Hiç bildirim yok.</div>
+                                        <div style={{padding: '20px', textAlign: 'center', color: '#666', fontSize: '0.9rem'}}>{t('notifications_panel.empty')}</div>
                                     )}
                                 </div>
-                          </div>
-                      )}
+                            </div>
+                        )}
                   </div>
 
-                  {currentUser ? (
-                      <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#222', padding:'5px 15px', borderRadius:'20px', border:'1px solid #333'}}>
-                        <button 
-                            onClick={() => setShowProfileModal(true)} 
-                            style={{background:'none', border:'none', color:'#00ff88', fontWeight:'bold', fontSize:'0.9rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px'}}
-                            title="Profili Düzenle"
-                        >
-                            👤 {currentUser.username} <span style={{fontSize:'0.7rem', color:'#888'}}>⚙️</span>
-                        </button>
-                          <button onClick={handleLogout} style={{background:'#333', border:'none', color:'#bbb', cursor:'pointer', fontSize:'0.8rem'}}>Çıkış</button>
+                  {/* KULLANICI ALANI VE DİL SEÇENEKLERİ (DİKEY HİZALAMA) */}
+                  <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:'5px'}}>
+                      
+                      {/* 1. ÜST KISIM: KULLANICI BUTONU (Değişken) */}
+                      {currentUser ? (
+                          <div style={{display:'flex', alignItems:'center', gap:'10px', background:'#222', padding:'5px 15px', borderRadius:'20px', border:'1px solid #333'}}>
+                              <button 
+                                  onClick={() => setShowProfileModal(true)} 
+                                  style={{background:'none', border:'none', color:'#00ff88', fontWeight:'bold', fontSize:'0.9rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px'}}
+                                  title={t('profile.title')}
+                              >
+                                  👤 {currentUser.username} <span style={{fontSize:'0.7rem', color:'#888'}}>⚙️</span>
+                              </button>
+                              <button onClick={handleLogout} style={{background:'#333', border:'none', color:'#bbb', cursor:'pointer', fontSize:'0.8rem'}}>{t('logout')}</button>
+                          </div>
+                      ) : ( 
+                          <button onClick={() => setShowUserAuth(true)} style={{ background: '#222', border: '1px solid #444', padding: '8px 20px', borderRadius: '20px', fontWeight: '600', fontSize:'0.9rem', cursor:'pointer', color:'#eee' }}>
+                              {t('login_register')}
+                          </button>
+                      )}
+
+                      {/* 2. ALT KISIM: DİL SEÇENEKLERİ (SABİT) */}
+                      <div style={{display:'flex', gap:'10px'}}>
+                          <button onClick={() => changeLanguage('tr')} style={{background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'3px', opacity: i18n.language === 'tr' ? 1 : 0.4, transition:'0.3s'}}>
+                              <span style={{fontSize:'1.2rem'}}>🇹🇷</span> 
+                              <span style={{color:'white', fontSize:'0.7rem', fontWeight:'bold'}}>TR</span>
+                          </button>
+                          
+                          <div style={{width:'1px', height:'15px', background:'#444'}}></div>
+                          
+                          <button onClick={() => changeLanguage('en')} style={{background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'3px', opacity: i18n.language === 'en' ? 1 : 0.4, transition:'0.3s'}}>
+                              <span style={{fontSize:'1.2rem'}}>🇬🇧</span> 
+                              <span style={{color:'white', fontSize:'0.7rem', fontWeight:'bold'}}>EN</span>
+                          </button>
                       </div>
-                  ) : ( <button onClick={() => setShowUserAuth(true)} style={{ background: '#222', border: '1px solid #444', padding: '8px 20px', borderRadius: '20px', fontWeight: '600', fontSize:'0.9rem', cursor:'pointer', color:'#eee' }}>Üye Girişi / Kayıt</button> )}
+
+                  </div>
               </div>
           </div>
 
@@ -783,7 +992,12 @@ function App() {
                   return (
                       <button key={m.id} className={`nav-btn ${activeTab === m.id ? 'active' : ''}`} onClick={() => { setActiveTab(m.id); setSelectedCoin(null); }}>
                           {m.label} 
-                          {m.id === 'ALARMS' ? <span style={{background:'#ff4d4d', borderRadius:'50%', padding:'0 5px', fontSize:'0.7rem', color:'white', marginLeft:'5px'}}>{myAlarms.length}</span> : ''}
+                          {m.id === 'ALARMS' && myAlarms.length > 0 && <span style={{background:'#ff4d4d', borderRadius:'50%', padding:'0 5px', fontSize:'0.7rem', color:'white', marginLeft:'5px'}}>{myAlarms.length}</span>}
+                          {m.id === 'FAVORITES' && favorites.length > 0 && (
+                            <span style={{background:'#ff4d4d', borderRadius:'50%', padding:'0 5px', fontSize:'0.7rem', color:'white', marginLeft:'5px'}}>
+                                {favorites.length}
+                            </span>
+                        )}
                       </button>
                   );
               })}
@@ -796,58 +1010,104 @@ function App() {
                   {activeTab === 'ALARMS' ? (
                       <>
                         <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a' }}>
-                            <h3 style={{margin:0, fontSize:'1rem', fontWeight:'700', color:'#00d2ff'}}>🔔 Aktif Alarmlar</h3>
+                            <h3 style={{margin:0, fontSize:'1rem', fontWeight:'700', color:'#00d2ff'}}>🔔 {t('alarms_table.title')}</h3>
                         </div>
-                        <div style={{ overflowY:'auto', overflowX: 'auto', flex:1 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
+                        {/* TABLO WRAPPER */}
+                        <div style={{ overflowY:'auto', overflowX: 'auto', flex:1, width:'100%' }}>
+                            
+                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                                 <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
-                                    <tr style={{ color: '#888', textAlign: 'left', fontSize:'0.8rem', borderBottom:'1px solid #333' }}>
-                                        <th style={{padding:'10px 15px'}}>Coin</th>
-                                        <th style={{padding:'10px', textAlign:'right'}}>Hedef</th>
-                                        <th style={{padding:'10px', textAlign:'right'}}>Şu An</th>
-                                        <th style={{padding:'10px', textAlign:'center'}}>Koşul</th>
-                                        <th style={{padding:'10px', textAlign:'center', width:'80px'}}>İşlem</th>
+                                    <tr style={{ color: '#888', fontSize:'0.75rem', borderBottom:'1px solid #444' }}>
+                                        <th style={{width:'25px', padding:'10px 0', textAlign:'center', borderRight:'1px solid #444'}}>★</th>
+                                        {currentUser && activeTab === 'FAVORITES' && <th style={{width:'25px', padding:'10px 0', textAlign:'center', borderRight:'1px solid #444'}}>🔔</th>}
+                                        
+                                        {/* ENSTRÜMAN */}
+                                        <th style={{ padding: '10px 0px 10px 5px', textAlign:'left', position:'sticky', left:0, background:'#1e1e2e', zIndex:11, width:'1px', whiteSpace:'nowrap', borderRight:'1px solid #444' }}>{t('table.instrument')}</th>
+                                        
+                                        {/* FİYAT */}
+                                        <th style={{ padding: '5px 0 5px 8px', textAlign:'left', width:'70px', borderRight:'1px solid #444' }} onClick={() => handleSort('price')}>{t('table.price')}</th>
+
+                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }} onClick={() => handleSort('change')}>24S</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }}>1H</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }}>1A</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }}>3A</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }} onClick={() => handleSort('change1y')}>1Y</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'55px', borderRight:'1px solid #444' }} onClick={() => handleSort('change5y')}>5Y</th>
+                                        
+                                        <th style={{ padding: '5px', textAlign:'center', width:'85px', borderRight:'1px solid #444' }}>{t('table.market_cap')}</th>
+                                        
+                                        {/* SPACER */}
+                                        <th style={{ width:'99%' }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {myAlarms.map(alarm => {
-                                        const currentCoin = coins.find(c => c.symbol === alarm.symbol);
-                                        const currentPrice = currentCoin ? currentCoin.price : 0;
-                                        const coinInfo = coins.find(c => c.symbol === alarm.symbol);
-                                        const displayName = coinInfo ? coinInfo.name : alarm.symbol;
-                                        const displayLogo = coinInfo ? coinInfo.logo : null;
+                                    {processedCoins.length > 0 ? processedCoins.map((coin) => {
+                                        const isFav = favorites.includes(coin.symbol);
+                                        const cellStyle = { borderRight: '1px solid #444' };
 
                                         return (
-                                            <tr 
-                                                key={alarm.id} 
-                                                onClick={() => setSelectedCoin(alarm.symbol)}
-                                                style={{
-                                                    borderBottom:'1px solid #2a2a35', 
-                                                    cursor: 'pointer', 
-                                                    background: selectedCoin === alarm.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent'
-                                                }}
-                                            >
-                                                <td style={{padding:'10px 15px', color:'#eee'}}>
-                                                    <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                                        {displayLogo && <img src={displayLogo} width="24" style={{borderRadius:'50%'}} />}
-                                                        <div style={{fontWeight:'bold'}}>{displayName}</div>
-                                                    </div>
+                                        <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #333', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
+                                            
+                                            <td style={{textAlign:'center', ...cellStyle}} onClick={(e) => handleToggleFavorite(e, coin.symbol)}>
+                                                <button className={`star-btn ${isFav ? 'active' : ''}`}>★</button>
+                                            </td>
+
+                                            {currentUser && activeTab === 'FAVORITES' && (
+                                                <td style={{textAlign:'center', ...cellStyle}}>
+                                                    <button className="bell-btn" onClick={(e) => openNewAlarmModal(e, coin)}>🔔</button>
                                                 </td>
-                                                <td style={{padding:'10px', textAlign:'right', color:'#00d2ff', fontFamily:'Consolas'}}>{parseFloat(alarm.targetPrice).toFixed(2)}</td>
-                                                <td style={{padding:'10px', textAlign:'right', color:'#eee', fontFamily:'Consolas'}}>{currentPrice.toFixed(2)}</td>
-                                                <td style={{padding:'10px', textAlign:'center'}}>
-                                                    {alarm.direction === 'UP' 
-                                                        ? <span style={{color:'#00ff88', fontSize:'0.8rem', background:'rgba(0,255,136,0.1)', padding:'2px 6px', borderRadius:'4px'}}>▲ Yükseliş</span> 
-                                                        : <span style={{color:'#ff4d4d', fontSize:'0.8rem', background:'rgba(255,77,77,0.1)', padding:'2px 6px', borderRadius:'4px'}}>▼ Düşüş</span>
-                                                    }
-                                                </td>
-                                                <td style={{padding:'10px', textAlign:'center', display:'flex', gap:'5px', justifyContent:'center'}}>
-                                                    <button onClick={(e) => { e.stopPropagation(); openEditAlarmModal(alarm); }} style={{background:'#00d2ff', border:'none', borderRadius:'6px', color:'white', width:'30px', height:'30px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>✏️</button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteAlarm(alarm.id); }} style={{background:'#ff4d4d', border:'none', borderRadius:'6px', color:'white', width:'30px', height:'30px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>🗑️</button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                            )}
+
+                                            <td style={{ 
+                                                padding: '8px 0px 8px 5px', 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '4px',
+                                                position:'sticky', 
+                                                left:0, 
+                                                background: selectedCoin === coin.symbol ? '#22262d' : '#1e1e2e', 
+                                                zIndex:1, 
+                                                whiteSpace: 'nowrap',
+                                                ...cellStyle 
+                                            }}> 
+                                                {coin.logo && <img src={coin.logo} alt={coin.name} width="22" height="22" style={{ borderRadius: '50%', background:'white', padding:'1px' }} onError={(e) => { e.target.style.display = 'none'; }} />}
+                                                <div> 
+                                                    <div style={{fontWeight:'700', fontSize:'0.85rem', color:'#eee', lineHeight:'1.1'}}>
+                                                        {getLocalizedAssetName(coin)}
+                                                    </div> 
+                                                    <div style={{ fontSize: '0.65rem', color: '#777' }}>{coin.symbol}</div> 
+                                                </div> 
+                                            </td>
+
+                                            <FlashCell 
+                                                value={coin.price} 
+                                                prefix={getCurrencySymbol(coin)} 
+                                                align="left" 
+                                                width="70px" 
+                                                fontSize="0.85rem" 
+                                                style={{...cellStyle, paddingLeft:'8px'}} 
+                                            />
+
+                                            <FlashCell value={coin.change} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
+
+                                            <FlashCell value={coin.change1w} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
+
+                                            <FlashCell value={coin.change1m} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
+
+                                            <FlashCell value={coin.change3m} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
+
+                                            <FlashCell value={coin.change1y} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
+
+                                            <FlashCell value={coin.change5y} suffix="%" align="center" isChange={true} width="55px" fontSize="0.85rem" style={cellStyle} />
+
+                                            <td style={{ textAlign:'center', padding:'0 5px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.8rem', width:'85px', ...cellStyle }}>
+                                                {formatMarketCap(coin.mcap, getCurrencySymbol(coin))}
+                                            </td>
+
+                                            <td></td>
+                                        </tr>
+                                        )}) : ( <tr><td colSpan="12" style={{padding:'20px', textAlign:'center', color:'#666'}}>Veri yok.</td></tr> )
+                                    }
                                 </tbody>
                             </table>
                         </div>
@@ -856,104 +1116,108 @@ function App() {
                       <>
                         <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                             <h3 style={{margin:0, fontSize:'1rem', fontWeight:'700', color:'#eee'}}>{markets.find(m => m.id === activeTab)?.label}</h3>
-                            <div style={{position:'relative'}}><input type="text" placeholder="Ara..." className="search-box" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{paddingRight: searchTerm ? '30px' : '12px'}} />{searchTerm && <span className="search-clear-btn" onClick={() => setSearchTerm("")}>✕</span>}</div>
+                            <div style={{position:'relative'}}><input type="text" placeholder={t('search')} className="search-box" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{paddingRight: searchTerm ? '30px' : '12px'}} />{searchTerm && <span className="search-clear-btn" onClick={() => setSearchTerm("")}>✕</span>}</div>
                         </div>
-                        <div style={{ overflowY:'auto', overflowX: 'auto', flex:1 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '650px' }}>
+                        {/* TABLO WRAPPER */}
+                        <div style={{ overflowY:'auto', overflowX: 'auto', flex:1, width:'100%' }}>
+                            
+                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                                 <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
-                                    <tr style={{ color: '#888', textAlign: 'left', fontSize:'0.8rem', borderBottom:'1px solid #333' }}>
-                                        <th style={{width:'30px', padding:'10px 5px', textAlign:'center'}}>★</th>
-                                        {currentUser && activeTab === 'FAVORITES' && <th style={{width:'30px', padding:'10px 5px', textAlign:'center'}}>🔔</th>}
-                                        <th style={{ padding: '10px 15px', position:'sticky', left:0, background:'#1e1e2e', zIndex:11 }}>Enstrüman</th>
-                                        <th style={{ padding: '10px', textAlign:'right', width:'110px' }} onClick={() => handleSort('price')}>Fiyat</th>
+                                    <tr style={{ color: '#888', fontSize:'0.75rem', borderBottom:'1px solid #555' }}>
+
+                                        <th style={{width:'30px', padding:'10px 0', textAlign:'center', borderRight:'1px solid #444'}}>★</th>
+                                        {currentUser && activeTab === 'FAVORITES' && <th style={{width:'30px', padding:'10px 0', textAlign:'center', borderRight:'1px solid #444'}}>🔔</th>}
                                         
-                                        {/* SÜTUNLARI SEKME TÜRÜNE GÖRE DEĞİŞTİR */}
-                                        {activeTab === 'PORTFOLIO' ? (
-                                            <>
-                                                <th style={{ padding: '10px', textAlign:'right', width:'120px' }}>Miktar</th>
-                                                <th style={{ padding: '10px', textAlign:'right', width:'140px' }}>Toplam Değer</th>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <th style={{ padding: '10px', textAlign:'right', width:'90px' }} onClick={() => handleSort('change')}>24s</th>
-                                                <th style={{ padding: '10px', textAlign:'right', width:'100px' }}>Piyasa Değ.</th>
-                                            </>
-                                        )}
+                                        {/* ENSTRÜMAN */}
+                                        <th style={{ padding: '10px 5px 10px 5px', textAlign:'left', position:'sticky', left:0, background:'#1e1e2e', zIndex:11, width:'1px', whiteSpace:'nowrap', borderRight:'1px solid #444' }}>{t('table.instrument')}</th>
                                         
-                                        <th style={{ padding: '10px', textAlign: 'center', width: '80px' }}>İşlem</th>
+                                        {/* FİYAT (SOLA YASLI - İSİMLE YAPIŞIK OLMASI İÇİN) */}
+                                        <th style={{ padding: '10px 5px 10px 8px', textAlign:'left', width:'80px', borderRight:'1px solid #444' }} onClick={() => handleSort('price')}>{t('table.price')}</th>
+                                        
+                                        {/* DEĞİŞİMLER (ORTALI) */}
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change')}>24S</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>1H</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>1A</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>3A</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change1y')}>1Y</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change5y')}>5Y</th>
+                                        
+                                        {/* PİYASA DEĞERİ */}
+                                        <th style={{ padding: '5px', textAlign:'center', width:'90px', borderRight:'1px solid #444' }}>{t('table.market_cap')}</th>
+                                        
+                                        {/* SPACER (Kalan boşluğu doldurur) */}
+                                        <th style={{ width:'auto' }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {processedCoins.length > 0 ? processedCoins.map((coin) => {
                                         const isFav = favorites.includes(coin.symbol);
-                                        const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
-                                        const assetValueTL = activeTab === 'PORTFOLIO' ? (coin.price * coin.myQty * (isTrAsset ? 1 : currentUsdRate)) : 0;
+                                        const borderStyle = { borderRight: '1px solid #444' };
 
                                         return (
-                                        <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #2a2a35', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
-                                            <td style={{textAlign:'center', borderRight:'1px solid #2a2a35'}} onClick={(e) => handleToggleFavorite(e, coin.symbol)}><button className={`star-btn ${isFav ? 'active' : ''}`}>★</button></td>
+                                        <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #333', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
+                                            
+                                            <td style={{textAlign:'center', ...borderStyle}} onClick={(e) => handleToggleFavorite(e, coin.symbol)}>
+                                                <button className={`star-btn ${isFav ? 'active' : ''}`}>★</button>
+                                            </td>
+
                                             {currentUser && activeTab === 'FAVORITES' && (
-                                                <td style={{textAlign:'center', borderRight:'1px solid #2a2a35'}}>
+                                                <td style={{textAlign:'center', ...borderStyle}}>
                                                     <button className="bell-btn" onClick={(e) => openNewAlarmModal(e, coin)}>🔔</button>
                                                 </td>
                                             )}
-                                            <td style={{ padding: '8px 15px', display: 'flex', alignItems: 'center', gap: '10px', position:'sticky', left:0, background: selectedCoin === coin.symbol ? '#22262d' : '#1e1e2e', zIndex:1, borderRight:'1px solid #2a2a35' }}> 
-                                                {coin.logo && <img src={coin.logo} alt={coin.name} width="28" height="28" style={{ borderRadius: '50%', background:'white', padding:'2px' }} onError={(e) => { e.target.style.display = 'none'; }} />}
-                                                <div> <div style={{ fontWeight: '700', fontSize:'0.9rem', color:'#eee' }}>{coin.name}</div> <div style={{ fontSize: '0.7rem', color: '#777' }}>{coin.symbol}</div> </div> 
+
+                                            {/* ENSTRÜMAN HÜCRESİ */}
+                                            <td style={{ 
+                                                padding: '8px 5px 8px 5px', 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '5px',
+                                                position:'sticky', 
+                                                left:0, 
+                                                background: selectedCoin === coin.symbol ? '#22262d' : '#1e1e2e', 
+                                                zIndex:1, 
+                                                whiteSpace: 'nowrap',
+                                                ...borderStyle
+                                            }}> 
+                                                {coin.logo && <img src={coin.logo} alt={coin.name} width="22" height="22" style={{ borderRadius: '50%', background:'white', padding:'1px' }} onError={(e) => { e.target.style.display = 'none'; }} />}
+                                                <div> 
+                                                    <div style={{fontWeight:'700', fontSize:'0.85rem', color:'#eee', lineHeight:'1.1'}}>
+                                                        {getLocalizedAssetName(coin)}
+                                                    </div> 
+                                                    <div style={{ fontSize: '0.65rem', color: '#777' }}>{coin.symbol}</div> 
+                                                </div> 
                                             </td>
-                                            <FlashCell value={coin.price} prefix={getCurrencySymbol(coin)} align="right" width="110px" />
-                                            
-                                            {/* PORTFOLIO İÇİN ÖZEL HÜCRELER */}
-                                            {activeTab === 'PORTFOLIO' ? (
-                                                <>
-                                                    <td style={{ textAlign:'right', padding:'0 10px', color:'#eee', fontFamily:'Consolas', fontWeight:'bold' }}>
-                                                        {coin.myQty} <span style={{fontSize:'0.7rem', color:'#888', fontWeight:'normal'}}>Adet</span>
-                                                    </td>
-                                                    <td style={{ textAlign:'right', padding:'0 10px', color:'#00ff88', fontFamily:'Consolas', fontWeight:'bold' }}>
-                                                        {assetValueTL.toFixed(2)} ₺
-                                                    </td>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <FlashCell value={coin.change} suffix="%" align="right" isChange={true} width="90px" />
-                                                    <td style={{ textAlign:'right', padding:'0 10px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.85rem' }}>{formatMarketCap(coin.mcap, getCurrencySymbol(coin))}</td>
-                                                </>
-                                            )}
-                                            
-                                            <td style={{ textAlign: 'center', padding: '0 10px' }}>
-                                                <button 
-                                                    onClick={(e) => openTradeModal(e, coin)}
-                                                    style={{
-                                                        background: 'linear-gradient(90deg, #00d2ff, #007aff)',
-                                                        border: 'none',
-                                                        color: 'white',
-                                                        padding: '6px 12px',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer',
-                                                        fontWeight: 'bold',
-                                                        fontSize: '0.8rem',
-                                                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-                                                    }}
-                                                >
-                                                    Al/Sat
-                                                </button>
+
+                                            <FlashCell 
+                                                value={coin.price} 
+                                                prefix={getCurrencySymbol(coin)} 
+                                                align="left"  
+                                                width="80px" 
+                                                fontSize="0.85rem" 
+                                                style={{...borderStyle, paddingLeft:'8px'}} 
+                                            />
+
+                                            <FlashCell value={coin.change} suffix="%" align="center" isChange={true} width="60px" fontSize="0.85rem" style={borderStyle} />
+
+                                            <FlashCell value={coin.change1w} suffix="%" align="center" isChange={true} width="60px" fontSize="0.85rem" style={borderStyle} />
+
+                                            <FlashCell value={coin.change1m} suffix="%" align="center" isChange={true} width="60px" fontSize="0.85rem" style={borderStyle} />
+
+                                            <FlashCell value={coin.change3m} suffix="%" align="center" isChange={true} width="60px" fontSize="0.85rem" style={borderStyle} />
+
+                                            <FlashCell value={coin.change1y} suffix="%" align="center" isChange={true} width="60px" fontSize="0.85rem" style={borderStyle} />
+
+                                            <FlashCell value={coin.change5y} suffix="%" align="center" isChange={true} width="60px" fontSize="0.85rem" style={borderStyle} />
+
+                                            <td style={{ textAlign:'center', padding:'0 5px', color:'#999', fontFamily:'Consolas, monospace', fontWeight:'600', fontSize:'0.8rem', width:'90px', ...borderStyle }}>
+                                                {formatMarketCap(coin.mcap, getCurrencySymbol(coin))}
                                             </td>
-                                        </tr>
-                                        )}) : ( <tr><td colSpan="7" style={{padding:'20px', textAlign:'center', color:'#666'}}>Veri yok.</td></tr> )
-                                    }
-                                    
-                                    {/* TOPLAM VARLIK ÖZETİ SATIRI */}
-                                    {activeTab === 'PORTFOLIO' && processedCoins.length > 0 && (
-                                        <tr style={{borderTop:'2px solid #333', background:'#1a1a24'}}>
-                                            <td colSpan={4} style={{textAlign:'right', padding:'15px', color:'#aaa', fontWeight:'bold'}}>
-                                                TOPLAM VARLIK DEĞERİ (TL):
-                                            </td>
-                                            <td style={{textAlign:'right', padding:'15px', color:'#00d2ff', fontFamily:'Consolas', fontSize:'1.1rem', fontWeight:'bold'}}>
-                                                {totalPortfolioValueTL.toFixed(2)} ₺
-                                            </td>
+
                                             <td></td>
                                         </tr>
-                                    )}
+                                        )}) : ( <tr><td colSpan="12" style={{padding:'20px', textAlign:'center', color:'#666'}}>Veri yok.</td></tr> )
+                                    }
                                 </tbody>
                             </table>
                         </div>
@@ -961,7 +1225,6 @@ function App() {
                   )}
               </div>
 
-              {/* SAĞ TARAF: GRAFİK (TradingView) VEYA DAİRE GRAFİĞİ (Portföy) */}
               <div style={{ 
                   background: '#1e1e2e', 
                   borderRadius: '12px', 
@@ -971,7 +1234,7 @@ function App() {
                   boxShadow: '0 4px 20px rgba(0,0,0,0.2)', 
                   border: '1px solid #333', 
                   position: 'relative', 
-                  minHeight: '400px', // YÜKSEKLİK GARANTİSİ
+                  minHeight: '400px',
                   ...(isFullScreen ? { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1000 } : {})
               }}>
                   
@@ -979,7 +1242,7 @@ function App() {
                         /* PORTFÖY DAİRE GRAFİĞİ */
                         <div style={{width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px'}}>
                             <h3 style={{color:'#eee', marginBottom:'15px'}}>Varlık Dağılımı</h3>
-                            <div style={{flex: 1, width: '100%', minHeight: '350px'}}> {/* Minimum yükseklik verildi */}
+                            <div style={{flex: 1, width: '100%', minHeight: '350px'}}> 
                                 <PortfolioChart portfolio={portfolio} coins={coins} walletBalance={walletBalance} usdRate={currentUsdRate} />
                             </div>
                         </div>
@@ -1005,7 +1268,7 @@ function App() {
 const modalStyle = {position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:10000, display:'flex', justifyContent:'center', alignItems:'center'};
 const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.8)'};
 
-// TRADE MODAL (Düzeltilmiş ve USD Hesaplamalı)
+// TRADE MODAL
 const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, getTradingViewSymbol, usdRate }) => {
     const [mode, setMode] = useState('BUY'); 
     const [amount, setAmount] = useState(''); 
@@ -1015,7 +1278,7 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
     const currentAssetQty = portfolio[coin.symbol] || 0;
 
     const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
-    
+     
     const effectiveRate = isTrAsset ? 1 : usdRate;
     const currencySymbol = isTrAsset ? '₺' : '$';
 
@@ -1190,17 +1453,19 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
 
 // PROFİL DÜZENLEME MODALI 
 const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
+    const { t } = useTranslation(); 
     const [activeSection, setActiveSection] = useState(0); 
 
     const [newUsername, setNewUsername] = useState(user.username);
     const [newGender, setNewGender] = useState(user.gender || 'Erkek');
-    const [newBirthDate, setNewBirthDate] = useState(user.birthDate ? user.birthDate.split('T')[0] : ''); 
+    const initialBirthDate = user.birthDate ? user.birthDate.split('T')[0] : '';
+    const [newBirthDate, setNewBirthDate] = useState(initialBirthDate); 
+     
     const [newPass, setNewPass] = useState('');
     const [newEmail, setNewEmail] = useState(user.email || '');
     const [newPhone, setNewPhone] = useState(user.phone || '');
 
     const [deletePass, setDeletePass] = useState(''); 
-
     const [supportSubject, setSupportSubject] = useState('Öneri');
     const [supportMsg, setSupportMsg] = useState('');
     const [loading, setLoading] = useState(false);
@@ -1209,8 +1474,19 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
     const [verificationCode, setVerificationCode] = useState('');  
     const [tempData, setTempData] = useState(null); 
 
+    const hasChanges = () => {
+        if (activeSection === 1) { 
+            return (newUsername !== user.username || newGender !== (user.gender || 'Erkek') || newBirthDate !== initialBirthDate || newPass !== '');
+        }
+        if (activeSection === 2) { 
+            return (newEmail !== (user.email || '') || newPhone !== (user.phone || ''));
+        }
+        return false;
+    };
+
     const handleInitiateUpdate = async (e) => {
         e.preventDefault();
+        if (!hasChanges()) return;
 
         if(newBirthDate) {
             const birth = new Date(newBirthDate);
@@ -1220,69 +1496,57 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
             if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
             if (age < 18) { toast.warn("Yaşınız 18'den küçük olamaz."); return; }
         }
-
-        if (newPhone && !/^5\d{9}$/.test(newPhone)) {
-            toast.warn("Telefon: 5 ile başlamalı ve 10 hane olmalı.");
-            return;
-        }
+        if (newPhone && !/^5\d{9}$/.test(newPhone)) { toast.warn("Telefon: 5 ile başlamalı ve 10 hane olmalı."); return; }
 
         setLoading(true);
         try {
-
             await AuthService.sendVerificationCode(user.username);
-
-            setTempData({
-                newUsername, newGender, newBirthDate, newPass, newEmail, newPhone
-            });
-
+            setTempData({ newUsername, newGender, newBirthDate, newPass, newEmail, newPhone });
             toast.info(`📧 Doğrulama kodu ${user.email} adresine gönderildi.`);
             setShowVerifyInput(true); 
-        } catch (err) {
-            toast.error(err.message);
-        } finally {
-            setLoading(false);
-        }
+        } catch (err) { toast.error(err.message); } 
+        finally { setLoading(false); }
     };
 
     const handleFinalVerify = async () => {
-        if(!verificationCode || verificationCode.length < 6) {
-            toast.warn("Lütfen 6 haneli kodu giriniz.");
-            return;
-        }
-
+        if(!verificationCode || verificationCode.length < 6) { toast.warn("Lütfen 6 haneli kodu giriniz."); return; }
         setLoading(true);
         try {
-            const payload = {
-                username: user.username,
-                code: verificationCode,
-                ...tempData, 
-                newPassword: newPass || undefined
-            };
-
+            const payload = { username: user.username, code: verificationCode, ...tempData, newPassword: newPass || undefined };
             const res = await AuthService.verifyAndUpdateProfile(payload);
-            
             toast.success(res.message);
             if (res.user) onUpdateSuccess(res.user);
-            
-            setShowVerifyInput(false); 
-            setVerificationCode('');
-        } catch (err) {
-            toast.error(err.message);
-        } finally {
-            setLoading(false);
-        }
+            setShowVerifyInput(false); setVerificationCode('');
+        } catch (err) { toast.error(err.message); } 
+        finally { setLoading(false); }
     };
 
     const handleDelete = async () => { 
         if(!deletePass) { toast.warn("Şifre girin."); return; }
-        if(window.confirm("Hesabınız kalıcı olarak silinecek. Emin misiniz?")) {
+        if(window.confirm(t('profile.delete_warning'))) {
             try { await AuthService.deleteAccount(user.username, deletePass); toast.info("Hesap silindi."); window.location.reload(); } catch(e) { toast.error(e.message); }
         }
     };
 
     const handleSendSupport = async (e) => {
-        e.preventDefault(); if(!supportMsg) return; setLoading(true);
-        try { await AuthService.sendSupport(user.username, supportSubject, supportMsg); toast.success("İletildi!"); setSupportMsg(''); } catch(e) { toast.error("Hata."); } finally { setLoading(false); }
+        e.preventDefault(); 
+
+        if(!supportMsg.trim()) { 
+            toast.warn(t('support.msg_placeholder')); 
+            return; 
+        } 
+         
+        setLoading(true);
+        try { 
+            await AuthService.sendSupport(user.username, supportSubject, supportMsg, user.email); 
+            toast.success(t('support.success')); 
+            setSupportMsg(''); 
+        } catch(e) { 
+            console.error(e);
+            toast.error(t('notifications.process_failed')); 
+        } finally { 
+            setLoading(false); 
+        }
     };
 
     const SectionBtn = ({ id, icon, title, color = '#eee' }) => (
@@ -1297,124 +1561,97 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
         <div style={modalStyle}>
             <div style={overlayStyle} onClick={onClose}></div>
             <div style={{ background: '#1e1e2e', borderRadius: '16px', border: '1px solid #333', width: '360px', zIndex: 10001, maxHeight:'90vh', overflowY:'auto', display:'flex', flexDirection:'column', position:'relative' }}>
-                
                 <div style={{padding:'15px', borderBottom:'1px solid #333', background:'#15151b', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                    <h3 style={{color:'#00d2ff', margin:0, fontSize:'1.1rem'}}>Profil Ayarları</h3>
+                    <h3 style={{color:'#00d2ff', margin:0, fontSize:'1.1rem'}}>{t('profile.title')}</h3>
                     <button onClick={onClose} style={{background:'none', border:'none', color:'#666', cursor:'pointer', fontSize:'1.2rem'}}>✕</button>
                 </div>
 
                 {/* 1. KİŞİSEL BİLGİLERİM */}
-                <SectionBtn id={1} icon="👤" title="Kişisel Bilgilerim" color="#00d2ff" />
+                <SectionBtn id={1} icon="👤" title={t('profile.personal_info')} color="#00d2ff" />
                 {activeSection === 1 && (
                     <div style={{padding:'20px', background:'#1a1a24'}}>
                         <form onSubmit={handleInitiateUpdate}>
-                            <label style={labelStyle}>Kullanıcı Adı</label>
-                            <input 
-                                type="text" 
-                                value={newUsername} 
-                                onChange={(e) => setNewUsername(e.target.value)}
-                                style={inputStyle}
-                                placeholder="Yeni kullanıcı adınızı girin"
-                            />
-                            
+                            <label style={labelStyle}>{t('profile.username')}</label>
+                            <input type="text" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} style={inputStyle} placeholder={t('profile.username_placeholder')} />
                             <div style={{display:'flex', gap:'10px'}}>
                                 <div style={{flex:1}}>
-                                    <label style={labelStyle}>Cinsiyet</label>
+                                    <label style={labelStyle}>{t('profile.gender')}</label>
                                     <select value={newGender} onChange={e=>setNewGender(e.target.value)} style={inputStyle}>
-                                        <option>Erkek</option><option>Kadın</option>
+                                        <option value="Erkek">{t('auth.male')}</option>
+                                        <option value="Kadın">{t('auth.female')}</option>
                                     </select>
                                 </div>
                                 <div style={{flex:1}}>
-                                    <label style={labelStyle}>Doğum Tarihi</label>
+                                    <label style={labelStyle}>{t('profile.birth_date')}</label>
                                     <input type="date" value={newBirthDate} onChange={e=>setNewBirthDate(e.target.value)} style={{...inputStyle, colorScheme:'dark'}} />
                                 </div>
                             </div>
-
-                            <label style={labelStyle}>Yeni Şifre</label>
-                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="Yeni şifreniz" style={inputStyle} />
+                            <label style={labelStyle}>{t('profile.new_password')}</label>
+                            <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder={t('profile.new_password_placeholder')} style={inputStyle} />
                             
-                            <button type="submit" disabled={loading} style={btnStyle}>Doğrulama Kodu Gönder</button>
+                            <button type="submit" disabled={loading || !hasChanges()} style={{...btnStyle, opacity: (!hasChanges() || loading) ? 0.5 : 1, cursor: (!hasChanges() || loading) ? 'not-allowed' : 'pointer'}}>
+                                {t('profile.send_verify_code')}
+                            </button>
                         </form>
                     </div>
                 )}
 
                 {/* 2. İLETİŞİM BİLGİLERİM */}
-                <SectionBtn id={2} icon="📞" title="İletişim Bilgilerim" color="#f1c40f" />
+                <SectionBtn id={2} icon="📞" title={t('profile.contact_info')} color="#f1c40f" />
                 {activeSection === 2 && (
                     <div style={{padding:'20px', background:'#1f1f1a'}}>
                         <form onSubmit={handleInitiateUpdate}>
-                            <label style={labelStyle}>E-posta Adresi</label>
+                            <label style={labelStyle}>{t('profile.email')}</label>
                             <input type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} style={inputStyle} />
-                            
-                            <label style={labelStyle}>Telefon Numarası</label>
+                            <label style={labelStyle}>{t('profile.phone')}</label>
                             <input type="tel" value={newPhone} onChange={e=>setNewPhone(e.target.value)} maxLength={10} placeholder="532..." style={inputStyle} />
                             
-                            <button type="submit" disabled={loading} style={btnStyle}>Doğrulama Kodu Gönder</button>
+                            <button type="submit" disabled={loading || !hasChanges()} style={{...btnStyle, opacity: (!hasChanges() || loading) ? 0.5 : 1, cursor: (!hasChanges() || loading) ? 'not-allowed' : 'pointer'}}>
+                                {t('profile.send_verify_code')}
+                            </button>
                         </form>
                     </div>
                 )}
 
                 {/* 3. HESABIMI SİL */}
-                <SectionBtn id={3} icon="🗑️" title="Hesabımı Sil" color="#ff4d4d" />
+                <SectionBtn id={3} icon="🗑️" title={t('profile.delete_account')} color="#ff4d4d" />
                 {activeSection === 3 && (
                     <div style={{padding:'20px', background:'#2a1a1a'}}>
-                        <p style={{color:'#ccc', fontSize:'0.9rem', marginTop:0}}>Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
-                        <label style={{...labelStyle, color:'#ff4d4d'}}>Mevcut Şifre</label>
+                        <p style={{color:'#ccc', fontSize:'0.9rem', marginTop:0}}>{t('profile.delete_warning')}</p>
+                        <label style={{...labelStyle, color:'#ff4d4d'}}>{t('profile.current_password')}</label>
                         <input type="password" value={deletePass} onChange={e=>setDeletePass(e.target.value)} style={{...inputStyle, borderColor:'#ff4d4d', background:'#1a0a0a'}} />
-                        <button onClick={handleDelete} style={{...btnStyle, background:'transparent', border:'1px solid #ff4d4d', color:'#ff4d4d'}}>⚠️ Hesabı Sil</button>
+                        <button onClick={handleDelete} style={{...btnStyle, background:'transparent', border:'1px solid #ff4d4d', color:'#ff4d4d'}}>⚠️ {t('profile.delete_account')}</button>
                     </div>
                 )}
 
-                {/* 4. YARDIM */}
-                <SectionBtn id={4} icon="💬" title="Yardım ve Destek" color="#00ff88" />
+                {/* 4. YARDIM (DÜZELTİLDİ) */}
+                <SectionBtn id={4} icon="💬" title={t('profile.help_support')} color="#00ff88" />
                 {activeSection === 4 && (
                     <div style={{padding:'20px', background:'#1a2420'}}>
                         <form onSubmit={handleSendSupport}>
-                            <label style={labelStyle}>Konu</label>
-                            <select value={supportSubject} onChange={e=>setSupportSubject(e.target.value)} style={inputStyle}><option>Öneri</option><option>Şikayet</option><option>Teknik</option></select>
-                            <label style={labelStyle}>Mesaj</label>
-                            <textarea rows="3" value={supportMsg} onChange={e=>setSupportMsg(e.target.value)} style={{...inputStyle, resize:'none'}}></textarea>
-                            <button type="submit" disabled={loading} style={{...btnStyle, background:'#00ff88', color:'#000'}}>Gönder</button>
+                            <label style={labelStyle}>{t('profile.subject')}</label>
+                            <select value={supportSubject} onChange={e=>setSupportSubject(e.target.value)} style={inputStyle}>
+                                <option value="Öneri">{t('support.type_suggestion')}</option>
+                                <option value="Şikayet">{t('support.type_complaint')}</option>
+                                <option value="Teknik">{t('support.type_technical')}</option>
+                            </select>
+                            <label style={labelStyle}>{t('profile.message')}</label>
+                            <textarea rows="3" value={supportMsg} onChange={e=>setSupportMsg(e.target.value)} style={{...inputStyle, resize:'none'}} placeholder={t('support.msg_placeholder')}></textarea>
+                            <button type="submit" disabled={loading} style={{...btnStyle, background:'#00ff88', color:'#000'}}>{t('profile.send')}</button>
                         </form>
                     </div>
                 )}
 
-                {/* DOĞRULAMA KODU GİRME PENCERESİ */}
+                {/* DOĞRULAMA KODU */}
                 {showVerifyInput && (
-                    <div style={{
-                        position:'absolute', top:0, left:0, width:'100%', height:'100%', 
-                        background:'#1e1e2e', zIndex:10002, display:'flex', flexDirection:'column', 
-                        justifyContent:'center', alignItems:'center', padding:'20px', boxSizing:'border-box'
-                    }}>
-                        <h3 style={{color:'#00d2ff', marginTop:0}}>🔐 Güvenlik Kontrolü</h3>
-                        <p style={{color:'#ccc', textAlign:'center', fontSize:'0.9rem'}}>
-                            <b>{user.email}</b> adresine gönderilen 6 haneli kodu giriniz.
-                        </p>
-                        
-                        <input 
-                            type="text" 
-                            maxLength={6}
-                            value={verificationCode}
-                            onChange={(e) => setVerificationCode(e.target.value)}
-                            style={{
-                                ...inputStyle, textAlign:'center', fontSize:'1.5rem', 
-                                letterSpacing:'5px', width:'200px', borderColor:'#00d2ff'
-                            }}
-                        />
-
-                        <button onClick={handleFinalVerify} disabled={loading} style={btnStyle}>
-                            {loading ? 'Doğrulanıyor...' : 'ONAYLA ve GÜNCELLE'}
-                        </button>
-                        
-                        <button 
-                            onClick={() => setShowVerifyInput(false)} 
-                            style={{background:'none', border:'none', color:'#666', marginTop:'15px', cursor:'pointer'}}
-                        >
-                            İptal
-                        </button>
+                    <div style={{position:'absolute', top:0, left:0, width:'100%', height:'100%', background:'#1e1e2e', zIndex:10002, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:'20px', boxSizing:'border-box'}}>
+                        <h3 style={{color:'#00d2ff', marginTop:0}}>🔐 {t('modal.security_check')}</h3>
+                        <p style={{color:'#ccc', textAlign:'center', fontSize:'0.9rem'}}><b>{user.email}</b> {t('modal.verify_text')}</p>
+                        <input type="text" maxLength={6} value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} style={{...inputStyle, textAlign:'center', fontSize:'1.5rem', letterSpacing:'5px', width:'200px', borderColor:'#00d2ff'}} />
+                        <button onClick={handleFinalVerify} disabled={loading} style={btnStyle}>{loading ? '...' : t('modal.confirm')}</button>
+                        <button onClick={() => setShowVerifyInput(false)} style={{background:'none', border:'none', color:'#666', marginTop:'15px', cursor:'pointer'}}>{t('modal.cancel')}</button>
                     </div>
                 )}
-
             </div>
         </div>
     );
@@ -1452,21 +1689,7 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                     <p style={{ color: '#ccc', marginBottom: '25px', lineHeight: '1.5' }}>
                         Sanal cüzdana erişmek için lütfen giriş yapınız.
                     </p>
-                    <button 
-                        onClick={onClose}
-                        style={{
-                            background: 'linear-gradient(90deg, #ff4d4d, #ff6b6b)',
-                            border: 'none',
-                            color: 'white',
-                            padding: '12px 30px',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontWeight: 'bold',
-                            fontSize: '1rem'
-                        }}
-                    >
-                        Kapat
-                    </button>
+                    <button onClick={onClose} style={{background: 'linear-gradient(90deg, #ff4d4d, #ff6b6b)', border: 'none', color: 'white', padding: '12px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem'}}>Kapat</button>
                 </div>
             </div>
         );
@@ -1505,28 +1728,13 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
         setErrorMessage('');
         
         if (step === 0) {
-            if (!cardNumber || cardNumber.replace(/\s/g, '').length !== 16) {
-                setErrorMessage('Kart numarası 16 haneli olmalıdır');
-                return;
-            }
-            if (!cardHolder.trim()) {
-                setErrorMessage('Kart sahibi adı giriniz');
-                return;
-            }
-            if (!expiryDate || expiryDate.length !== 5) {
-                setErrorMessage('Geçerli bir tarih giriniz (MM/YY)');
-                return;
-            }
-            if (!cvv || cvv.length !== 3) {
-                setErrorMessage('CVV 3 haneli olmalıdır');
-                return;
-            }
+            if (!cardNumber || cardNumber.replace(/\s/g, '').length !== 16) { setErrorMessage('Kart numarası 16 haneli olmalıdır'); return; }
+            if (!cardHolder.trim()) { setErrorMessage('Kart sahibi adı giriniz'); return; }
+            if (!expiryDate || expiryDate.length !== 5) { setErrorMessage('Geçerli bir tarih giriniz (MM/YY)'); return; }
+            if (!cvv || cvv.length !== 3) { setErrorMessage('CVV 3 haneli olmalıdır'); return; }
             setStep(1);
         } else if (step === 1) {
-            if (!amount || parseFloat(amount) <= 0) {
-                setErrorMessage('Geçerli bir miktar giriniz');
-                return;
-            }
+            if (!amount || parseFloat(amount) <= 0) { setErrorMessage('Geçerli bir miktar giriniz'); return; }
             setIsLoading(true);
             setTimeout(() => {
                 const newBalance = walletBalance + parseFloat(amount);
@@ -1540,183 +1748,230 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
     };
 
     const resetForm = () => {
-        setCardNumber('');
-        setCardHolder('');
-        setExpiryDate('');
-        setCvv('');
-        setAmount('');
-        setStep(0);
-        setSuccessMessage('');
+        setCardNumber(''); setCardHolder(''); setExpiryDate(''); setCvv(''); setAmount(''); setStep(0); setSuccessMessage('');
     };
 
     return (
-        <div style={modalStyle}>
-            <div style={overlayStyle} onClick={onClose}></div>
-            <div style={{
-                background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
-                borderRadius: '20px',
+  <div style={modalStyle}>
+    <div style={overlayStyle} onClick={onClose}></div>
+
+    <div
+      style={{
+        background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
+        borderRadius: '20px',
+        border: '2px solid #00d2ff',
+        width: '420px',
+        zIndex: 10001,
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: '0 0 40px rgba(0, 210, 255, 0.3)'
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(circle at 20% 50%, rgba(0, 210, 255, 0.1) 0%, transparent 50%)',
+          pointerEvents: 'none'
+        }}
+      />
+
+      {/* HEADER */}
+      <div
+        style={{
+          padding: '20px',
+          borderBottom: '1px solid rgba(0, 210, 255, 0.2)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          position: 'relative',
+          zIndex: 1
+        }}
+      >
+        <h2 style={{ color: '#00d2ff', margin: 0 }}>💳 Sanal Cüzdan</h2>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#666',
+            fontSize: '1.5rem',
+            cursor: 'pointer'
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      <div style={{ padding: '30px', position: 'relative', zIndex: 1 }}>
+
+        {/* ================= STEP 0 ================= */}
+        {step === 0 && (
+          <form onSubmit={handleSubmit}>
+            <h3 style={{ color: '#eee', textAlign: 'center' }}>
+              Kart Bilgilerinizi Giriniz
+            </h3>
+
+            {/* KART GÖRÜNÜM */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+                borderRadius: '15px',
+                padding: '20px',
+                marginBottom: '25px',
                 border: '2px solid #00d2ff',
-                width: '420px',
-                zIndex: 10001,
-                position: 'relative',
-                overflow: 'hidden',
-                boxShadow: '0 0 40px rgba(0, 210, 255, 0.3)'
-            }}>
-                <div style={{
-                    position: 'absolute',
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'radial-gradient(circle at 20% 50%, rgba(0, 210, 255, 0.1) 0%, transparent 50%)',
-                    pointerEvents: 'none'
-                }}></div>
+                color: 'white',
+                fontFamily: 'monospace'
+              }}
+            >
+              <div style={{ marginBottom: '15px' }}>
+                {cardNumber || '•••• •••• •••• ••••'}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>{cardHolder || 'ADIM SOYADIM'}</span>
+                <span>{expiryDate || 'MM/YY'}</span>
+              </div>
+            </div>
 
-                <div style={{
-                    padding: '20px',
-                    borderBottom: '1px solid rgba(0, 210, 255, 0.2)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    position: 'relative',
-                    zIndex: 1
-                }}>
-                    <h2 style={{ color: '#00d2ff', margin: 0, fontSize: '1.3rem', fontWeight: 'bold' }}>
-                        💳 Sanal Cüzdan
-                    </h2>
-                    <button onClick={onClose} style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#666',
-                        fontSize: '1.5rem',
-                        cursor: 'pointer',
-                        transition: 'color 0.2s'
-                    }} onMouseEnter={(e) => e.target.style.color = '#ff4d4d'} onMouseLeave={(e) => e.target.style.color = '#666'}>
-                        ✕
-                    </button>
-                </div>
+            <input
+              type="text"
+              placeholder="1234 5678 9012 3456"
+              value={cardNumber}
+              onChange={handleCardNumberChange}
+              maxLength="19"
+              style={inputStyle}
+            />
 
-                <div style={{ padding: '30px', position: 'relative', zIndex: 1 }}>
-                    {step === 0 && (
-                        <div style={{ animation: 'fadeIn 0.5s ease-in' }}>
-                            <h3 style={{ color: '#eee', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>
-                                Kart Bilgilerinizi Giriniz
-                            </h3>
-                            
-                            <div style={{
-                                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                                borderRadius: '15px',
-                                padding: '20px',
-                                marginBottom: '25px',
-                                border: '2px solid #00d2ff',
-                                boxShadow: '0 8px 32px rgba(0, 210, 255, 0.2)',
-                                minHeight: '200px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                justifyContent: 'space-between',
-                                color: 'white',
-                                fontFamily: 'monospace',
-                                position: 'relative',
-                                overflow: 'hidden'
-                            }}>
-                                <div style={{
-                                    position: 'absolute', top: '-50%', right: '-50%', width: '200%', height: '200%',
-                                    background: 'radial-gradient(circle, rgba(0, 210, 255, 0.1) 0%, transparent 70%)',
-                                    animation: 'pulse 3s ease-in-out infinite'
-                                }}></div>
-                                
-                                <div style={{ position: 'relative', zIndex: 1 }}>
-                                    <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '10px' }}>KART NUMARASI</div>
-                                    <div style={{
-                                        fontSize: '1.3rem', letterSpacing: '3px', fontWeight: 'bold', minHeight: '30px',
-                                        animation: cardNumber ? 'slideIn 0.3s ease-out' : 'none'
-                                    }}>
-                                        {cardNumber || '•••• •••• •••• ••••'}
-                                    </div>
-                                </div>
-                                
-                                <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '5px' }}>KART SAHİBİ</div>
-                                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', minHeight: '20px', animation: cardHolder ? 'slideIn 0.3s ease-out' : 'none' }}>
-                                            {cardHolder || 'ADIM SOYADIM'}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '5px' }}>SON KULLANMA</div>
-                                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', minHeight: '20px', animation: expiryDate ? 'slideIn 0.3s ease-out' : 'none' }}>
-                                            {expiryDate || 'MM/YY'}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <form onSubmit={handleSubmit}>
-                                <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Kart Numarası</label>
-                                    <input type="text" placeholder="1234 5678 9012 3456" value={cardNumber} onChange={handleCardNumberChange} maxLength="19" style={{ ...inputStyle, fontSize: '1.1rem', letterSpacing: '2px', fontFamily: 'monospace', textAlign: 'center' }} />
-                                </div>
+            <input
+              type="text"
+              placeholder="ADIM SOYADIM"
+              value={cardHolder}
+              onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+              style={inputStyle}
+            />
 
-                                <div style={{ marginBottom: '15px' }}>
-                                    <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Kart Sahibi</label>
-                                    <input type="text" placeholder="ADIM SOYADIM" value={cardHolder} onChange={(e) => setCardHolder(e.target.value.toUpperCase())} style={inputStyle} />
-                                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <input
+                type="text"
+                placeholder="MM/YY"
+                value={expiryDate}
+                onChange={handleExpiryChange}
+                maxLength="5"
+                style={inputStyle}
+              />
+              <input
+                type="password"
+                placeholder="CVV"
+                value={cvv}
+                onChange={handleCvvChange}
+                maxLength="3"
+                style={inputStyle}
+              />
+            </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
-                                    <div>
-                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Son Kullanma</label>
-                                        <input type="text" placeholder="MM/YY" value={expiryDate} onChange={handleExpiryChange} maxLength="5" style={{ ...inputStyle, marginBottom: 0, textAlign: 'center', fontSize: '1.1rem', fontFamily: 'monospace' }} />
-                                    </div>
-                                    <div>
-                                        <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>CVV</label>
-                                        <input type="password" placeholder="***" value={cvv} onChange={handleCvvChange} maxLength="3" style={{ ...inputStyle, marginBottom: 0, textAlign: 'center', fontSize: '1.1rem', fontFamily: 'monospace' }} />
-                                    </div>
-                                </div>
+            <button type="submit" style={btnStyle}>
+              Devam Et →
+            </button>
+          </form>
+        )}
 
-                                <button type="submit" style={{ ...btnStyle, background: 'linear-gradient(90deg, #00d2ff, #007aff)', fontSize: '1rem', padding: '12px' }}>Devam Et →</button>
-                            </form>
-                        </div>
-                    )}
+        {/* ================= STEP 1 ================= */}
+        {step === 1 && (
+          <form onSubmit={handleSubmit}>
+            <h3 style={{ color: '#eee', textAlign: 'center' }}>Para Yükle</h3>
 
-                    {step === 1 && (
-                        <div style={{ animation: 'slideIn 0.5s ease-out' }}>
-                            <h3 style={{ color: '#eee', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>Para Yükle</h3>
-                            <div style={{ background: 'rgba(0, 210, 255, 0.1)', border: '2px solid #00d2ff', borderRadius: '12px', padding: '15px', marginBottom: '20px', textAlign: 'center' }}>
-                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>Mevcut Bakiye</div>
-                                <div style={{ color: '#00ff88', fontSize: '1.8rem', fontWeight: 'bold', fontFamily: 'monospace' }}>{walletBalance.toFixed(2)} ₺</div>
-                            </div>
+            <div
+              style={{
+                background: 'rgba(0, 210, 255, 0.1)',
+                border: '2px solid #00d2ff',
+                borderRadius: '12px',
+                padding: '15px',
+                marginBottom: '20px',
+                textAlign: 'center'
+              }}
+            >
+              <div style={{ color: '#888' }}>Mevcut Bakiye</div>
+              <div style={{ color: '#00ff88', fontSize: '1.8rem' }}>
+                {walletBalance.toFixed(2)} ₺
+              </div>
+            </div>
 
-                            <form onSubmit={handleSubmit}>
-                                <label style={{ color: '#888', fontSize: '0.8rem', display: 'block', marginBottom: '5px' }}>Yüklenecek Miktar (₺)</label>
-                                <input type="number" placeholder="100" value={amount} onChange={handleAmountChange} min="1" step="1" style={{ ...inputStyle, fontSize: '1.3rem', textAlign: 'center', fontWeight: 'bold' }} />
+            <input
+              type="number"
+              value={amount}
+              onChange={handleAmountChange}
+              min="1"
+              style={inputStyle}
+            />
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
-                                    {[50, 100, 250].map(val => (
-                                        <button key={val} type="button" onClick={() => setAmount(val.toString())} style={{ background: amount === val.toString() ? '#00d2ff' : 'rgba(0, 210, 255, 0.2)', border: '1px solid #00d2ff', color: amount === val.toString() ? '#000' : '#00d2ff', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>{val} ₺</button>
-                                    ))}
-                                </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '8px',
+                marginBottom: '20px'
+              }}
+            >
+              {[50, 100, 250].map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setAmount(val.toString())}
+                  style={btnStyle}
+                >
+                  {val} ₺
+                </button>
+              ))}
+            </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    <button type="button" onClick={() => setStep(0)} style={{ background: 'transparent', border: '1px solid #666', color: '#888', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>← Geri</button>
-                                    <button type="submit" disabled={isLoading} style={{ ...btnStyle, background: isLoading ? '#666' : 'linear-gradient(90deg, #00ff88, #00d2ff)', color: isLoading ? '#999' : '#000', opacity: isLoading ? 0.7 : 1 }}>{isLoading ? '⏳ İşleniyor...' : '✓ Yükle'}</button>
-                                </div>
-                            </form>
-                        </div>
-                    )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button type="button" onClick={() => setStep(0)} style={btnStyle}>
+                ← Geri
+              </button>
+              <button type="submit" disabled={isLoading} style={btnStyle}>
+                {isLoading ? '⏳ İşleniyor...' : '✓ Yükle'}
+              </button>
+            </div>
+          </form>
+        )}
 
-                    {step === 2 && (
-                        <div style={{ textAlign: 'center', animation: 'scaleIn 0.6s ease-out' }}>
-                            <div style={{ fontSize: '4rem', marginBottom: '15px', animation: 'bounce 0.6s ease-out' }}>✅</div>
-                            <h3 style={{ color: '#00ff88', marginTop: 0, marginBottom: '10px' }}>Başarılı!</h3>
-                            <p style={{ color: '#eee', marginBottom: '20px', fontSize: '1rem' }}>{successMessage}</p>
-                            <div style={{ background: 'rgba(0, 255, 136, 0.1)', border: '1px solid #00ff88', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
-                                <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '5px' }}>Yeni Bakiye</div>
-                                <div style={{ color: '#00ff88', fontSize: '1.6rem', fontWeight: 'bold', fontFamily: 'monospace' }}>{walletBalance.toFixed(2)} ₺</div>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                <button onClick={resetForm} style={{ ...btnStyle, background: 'linear-gradient(90deg, #00d2ff, #007aff)' }}>Yeniden Yükle</button>
-                                <button onClick={onClose} style={{ background: 'transparent', border: '1px solid #00ff88', color: '#00ff88', padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kapat</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+        {/* ================= STEP 2 ================= */}
+        {step === 2 && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '4rem' }}>✅</div>
+            <h3 style={{ color: '#00ff88' }}>Başarılı!</h3>
+            <p>{successMessage}</p>
+
+            <div
+              style={{
+                background: 'rgba(0, 255, 136, 0.1)',
+                border: '1px solid #00ff88',
+                borderRadius: '8px',
+                padding: '15px',
+                marginBottom: '20px'
+              }}
+            >
+              <div>Yeni Bakiye</div>
+              <div style={{ fontSize: '1.6rem' }}>
+                {walletBalance.toFixed(2)} ₺
+              </div>
+            </div>
+
+            <button onClick={resetForm} style={btnStyle}>
+              Yeniden Yükle
+            </button>
+            <button onClick={onClose} style={btnStyle}>
+              Kapat
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
+};
 
                 <style>{`
                     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -1724,6 +1979,65 @@ const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: 
                     @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
                     @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
                 `}</style>
+const GuestSupportModal = ({ onClose, type }) => { 
+    const { t } = useTranslation();
+    const [name, setName] = useState('');
+    const [contact, setContact] = useState(''); 
+
+    const [subject, setSubject] = useState(
+        type === 'LOGIN' ? t('support.option_login') : 
+        (type === 'REGISTER' ? t('support.option_register') : t('support.option_other'))
+    );
+    
+    const [msg, setMsg] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+
+        if (!contact.trim() || !msg.trim()) { 
+            toast.warn(t('support.msg_placeholder')); 
+            return; 
+        }
+        
+        setLoading(true);
+        try {
+            await AuthService.sendSupport(name || 'Ziyaretçi', subject, msg, contact);
+            toast.success(t('support.success')); 
+            onClose();
+        } catch (err) { 
+            console.error(err);
+            toast.error(t('notifications.process_failed')); 
+        } 
+        finally { setLoading(false); }
+    };
+
+    return (
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={onClose}></div>
+            <div style={{ background: '#1e1e2e', padding: '30px', borderRadius: '16px', border: '1px solid #333', width: '320px', zIndex: 10001, position:'relative' }}>
+                <h3 style={{color:'#00ff88', marginTop:0, textAlign:'center'}}>
+                    {type === 'LOGIN' ? t('support.title_login') : (type === 'REGISTER' ? t('support.title_register') : t('support.title_general'))}
+                </h3>
+                
+                <form onSubmit={handleSend}>
+                    <input type="text" placeholder={t('support.name_placeholder')} value={name} onChange={e=>setName(e.target.value)} style={inputStyle} />
+                    <input type="text" placeholder={t('support.contact_placeholder')} value={contact} onChange={e=>setContact(e.target.value)} style={{...inputStyle, borderColor:'#00d2ff'}} required />
+
+                    <select value={subject} onChange={e=>setSubject(e.target.value)} style={inputStyle}>
+                        <option>{t('support.option_register')}</option>
+                        <option>{t('support.option_login')}</option>
+                        <option>{t('support.option_forgot')}</option>
+                        <option>{t('support.option_other')}</option>
+                    </select>
+
+                    <textarea rows="4" placeholder={t('support.msg_placeholder')} value={msg} onChange={e=>setMsg(e.target.value)} style={{...inputStyle, resize:'none'}} required></textarea>
+
+                    <button type="submit" disabled={loading} style={btnStyle}>
+                        {loading ? '...' : t('support.send')}
+                    </button>
+                </form>
+                <button onClick={onClose} style={{width:'100%', marginTop:'10px', background:'transparent', color:'#666', border:'none', cursor:'pointer'}}>{t('support.close')}</button>
             </div>
         </div>
     );
