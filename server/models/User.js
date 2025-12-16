@@ -12,7 +12,16 @@ const UserSchema = new mongoose.Schema({
   favorites: [{ type: String }],
   verificationCode: { type: String },
   verificationCodeExpires: { type: Date },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+
+  walletBalance: { type: Number, default: 0 }, 
+    portfolio: { type: Map, of: Number, default: {} }, 
+    savedCard: { 
+        number: String,
+        holder: String,
+        expiry: String,
+        cvv: String
+    }
 });
 
 module.exports = mongoose.model('User', UserSchema);
