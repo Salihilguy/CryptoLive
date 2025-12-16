@@ -348,7 +348,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// MÜŞTERİ GİRİŞİ (Mail/Tel)
+// MÜŞTERİ GİRİŞİ (GÜNCELLENDİ: Cüzdan verileri eklendi)
 app.post('/api/user-login', async (req, res) => {
     const { username, password } = req.body; 
     
@@ -373,7 +373,11 @@ app.post('/api/user-login', async (req, res) => {
                     birthDate: user.birthDate,
                     gender: user.gender,
                     favorites: user.favorites || [],
-                    isAdmin: user.isAdmin
+                    isAdmin: user.isAdmin,
+                    // YENİLER:
+                    walletBalance: user.walletBalance,
+                    portfolio: user.portfolio,
+                    savedCards: user.savedCards || []
                 }
             });
         } else {
@@ -436,50 +440,26 @@ app.post('/api/get-alarms', async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
 });
 
-// --- AKILLI ALARM SİLME (Smart Delete) ---
-app.post('/api/delete-alarm', async (req, res) => {
-    const { userId, alarmId } = req.body; 
-
-    console.log(`Silme İsteği: AlarmID=${alarmId}, UserID=${userId}`); // Log ekledik
+// ALARM SİLME ENDPOINT'İ
+app.delete('/api/alarms/:id', async (req, res) => {
+    const { id } = req.params;
 
     try {
-        // 1. Önce alarmı bul
-        const alarm = await Alarm.findById(alarmId);
-        if (!alarm) {
-            console.log("Alarm veritabanında bulunamadı.");
-            return res.status(404).json({ message: 'Alarm bulunamadı.' });
+        // MongoDB'den ID'ye göre bul ve sil
+        const deletedAlarm = await Alarm.findByIdAndDelete(id);
+
+        if (!deletedAlarm) {
+            return res.status(404).json({ success: false, message: 'Alarm bulunamadı.' });
         }
 
-        // 2. Yetki Kontrolü (Smart Check)
-        // Eğer alarmın içinde userId varsa, ID'ye bak. Yoksa username'e bak.
-        const user = await User.findById(userId);
-        
-        let isOwner = false;
-        if (alarm.userId) {
-            // Yeni sistem: ID kontrolü
-            isOwner = alarm.userId.toString() === userId;
-        } else {
-            // Eski sistem: İsim kontrolü (Yedek)
-            isOwner = user && (alarm.username === user.username);
-        }
-
-        if (!isOwner) {
-            console.log("Yetkisiz işlem denemesi.");
-            return res.status(403).json({ message: 'Bu alarmı silmeye yetkiniz yok.' });
-        }
-
-        // 3. Silme İşlemi
-        await Alarm.findByIdAndDelete(alarmId);
-        console.log("Alarm başarıyla silindi.");
         res.json({ success: true, message: 'Alarm başarıyla silindi.' });
-
-    } catch (err) { 
-        console.error("Silme Hatası Detayı:", err);
-        res.status(500).json({ message: 'Sunucu hatası.' }); 
+    } catch (err) {
+        console.error("Alarm silme hatası:", err);
+        res.status(500).json({ success: false, message: 'Sunucu hatası: ' + err.message });
     }
 });
 
-// --- AKILLI ALARM GÜNCELLEME ---
+// AKILLI ALARM GÜNCELLEME
 app.post('/api/update-alarm', async (req, res) => {
     const { userId, alarmId, targetPrice, currentPrice, note } = req.body;
     const direction = parseFloat(targetPrice) > parseFloat(currentPrice) ? 'UP' : 'DOWN';
@@ -500,11 +480,9 @@ app.post('/api/update-alarm', async (req, res) => {
 
         if (!isOwner) return res.status(403).json({ message: 'Yetkisiz işlem.' });
 
-        // Güncelleme
         alarm.targetPrice = targetPrice;
         alarm.direction = direction;
         alarm.note = note;
-        // Eğer eski alarm ise, güncellerken ID'sini de ekleyelim ki tamir olsun
         if (!alarm.userId) alarm.userId = userId; 
         
         await alarm.save();
@@ -513,6 +491,26 @@ app.post('/api/update-alarm', async (req, res) => {
     } catch (err) { 
         console.error("Güncelleme Hatası:", err);
         res.status(500).json({ message: 'Sunucu hatası.' }); 
+    }
+});
+
+// BİLDİRİM SİLME (TEK)
+app.delete('/api/notifications/:id', async (req, res) => {
+    try {
+        await Notification.findByIdAndDelete(req.params.id);
+        res.json({ success: true, message: 'Bildirim silindi.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Silme hatası.' });
+    }
+});
+
+// BİLDİRİM SİLME (TÜMÜ)
+app.delete('/api/notifications/all/:username', async (req, res) => {
+    try {
+        await Notification.deleteMany({ username: req.params.username });
+        res.json({ success: true, message: 'Tüm bildirimler temizlendi.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Temizleme hatası.' });
     }
 });
 
@@ -564,10 +562,9 @@ app.get('/api/admin/support', async (req, res) => {
         const messages = await SupportMessage.find().sort({ createdAt: -1 });
         const formatted = messages.map(m => ({
             id: m._id,
-            // Eğer username varsa onu, yoksa name'i kullan
             username: m.username, 
             name: m.name,
-            contact: m.contactInfo || m.contact, // İkisi de olabilir
+            contact: m.contactInfo || m.contact, 
             subject: m.subject,
             message: m.message,
             status: m.status,
@@ -578,21 +575,20 @@ app.get('/api/admin/support', async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
 });
 
-// DESTEK MESAJI GÖNDERME (TAMİR EDİLDİ)
+// DESTEK MESAJI GÖNDERME 
 app.post('/api/send-support', async (req, res) => {
     // Frontend'den gelen veriler:
     const { name, subject, message, contact } = req.body; 
 
-    console.log("Destek İsteği Geldi:", req.body); // Loglayalım
+    console.log("Destek İsteği Geldi:", req.body);
 
     try {
-        // İsim veritabanında var mı diye bak (Üye kontrolü)
         const user = await User.findOne({ username: name });
 
         const newMsg = new SupportMessage({
-            username: user ? user.username : null, // Üye ise doldur
+            username: user ? user.username : null, 
             name: name, 
-            contact: contact, // Modelde 'contact' yaptık, burası da 'contact' olmalı
+            contact: contact,
             subject: subject,
             message: message,
             status: 'Bekliyor',
@@ -618,16 +614,16 @@ app.post('/api/admin/delete-support', async (req, res) => {
     } catch (err) { res.status(500).json({ message: 'Hata' }); }
 });
 
-// DESTEK YANITLAMA (DB KAYITLI + SOCKET BİLDİRİMLİ)
+// DESTEK YANITLAMA
 app.post('/api/reply-support', async (req, res) => {
-    const { id, reply } = req.body; // Frontend'den sadece id ve reply geliyor
+    const { id, reply } = req.body; 
     
     console.log("👉 [BACKEND] Yanıt İsteği:", { id, reply });
 
     try {
         if (!id) return res.status(400).json({ message: 'ID eksik.' });
 
-        // 1. Mesajı Güncelle (findByIdAndUpdate en güvenlisidir)
+        // 1. Mesajı Güncelle
         const supportReq = await SupportMessage.findByIdAndUpdate(
             id,
             { $set: { reply: reply, status: 'Yanıtlandı' } },
@@ -637,29 +633,26 @@ app.post('/api/reply-support', async (req, res) => {
         if (!supportReq) return res.status(404).json({ message: 'Talep bulunamadı.' });
 
         // 2. Hedef Kullanıcıyı Bul
-        // Mesajın sahibini (username) veya misafir ismini (name) al
         const targetUsername = supportReq.username || supportReq.name;
 
         if (targetUsername) {
-            // --- A. VERİTABANINA BİLDİRİM KAYDET (KALICILIK İÇİN) ---
+            // A. VERİTABANINA BİLDİRİM KAYDET
             const newNotif = new Notification({
                 username: targetUsername,
                 title: "Destek Yanıtı", 
-                message: reply, // Yönetici yanıtı
-                originalMessage: supportReq.message, // Kullanıcının sorusu
+                message: reply, 
+                originalMessage: supportReq.message, 
                 type: 'support_reply'
             });
             await newNotif.save();
             console.log("✅ Bildirim veritabanına kaydedildi.");
 
-            // --- B. SOCKET İLE CANLI GÖNDER (ANLIK GÖRÜNÜM İÇİN) ---
-            // userSockets listesinden kullanıcının o anki ID'sini bul
+            // B. SOCKET İLE CANLI GÖNDER (ANLIK GÖRÜNÜM İÇİN)
             if (typeof userSockets !== 'undefined') {
                 const targetSocketId = userSockets[targetUsername];
                 if (targetSocketId) {
                     io.to(targetSocketId).emit('notification', {
-                        ...newNotif._doc, // Veritabanındaki kaydı gönderiyoruz
-                        // Frontend'de çeviri anahtarı kullanıyorsan title önemsiz olabilir ama yine de gönderelim
+                        ...newNotif._doc, 
                         title: "Destek Yanıtı" 
                     });
                     console.log(`🚀 Socket bildirimi gönderildi: ${targetUsername}`);
@@ -675,17 +668,13 @@ app.post('/api/reply-support', async (req, res) => {
     }
 });
 
-// DUYURU GÖNDERME (HERKESE KAYIT + SOCKET)
+// DUYURU GÖNDERME
 app.post('/api/notification', async (req, res) => {
     const { title, message, type } = req.body;
 
     try {
-        // 1. TÜM KULLANICILARI BUL (Veritabanına kayıt için)
-        // Sadece username'leri çekiyoruz ki işlem hızlı olsun
         const allUsers = await User.find({}, 'username');
 
-        // 2. HER KULLANICI İÇİN BİLDİRİM OLUŞTUR
-        // (Toplu kayıt işlemi - Bulk Insert)
         const notificationsToSave = allUsers.map(user => ({
             username: user.username,
             title: title,
@@ -720,8 +709,8 @@ app.post('/api/notification', async (req, res) => {
 app.get('/api/notifications/:username', async (req, res) => {
     try {
         const notifications = await Notification.find({ username: req.params.username })
-                                            .sort({ date: -1 }) // En yeni en üstte
-                                            .limit(20); // Son 20 bildirim
+                                            .sort({ date: -1 }) 
+                                            .limit(20); 
         res.json(notifications);
     } catch (err) {
         res.status(500).json({ message: 'Bildirimler alınamadı.' });
@@ -822,7 +811,11 @@ app.post('/api/verify-update', async (req, res) => {
                 birthDate: user.birthDate,
                 gender: user.gender,
                 favorites: user.favorites || [],
-                isAdmin: user.isAdmin
+                isAdmin: user.isAdmin,
+
+                walletBalance: user.walletBalance,
+                portfolio: user.portfolio,
+                savedCards: user.savedCards || []
             }
         });
 
@@ -838,9 +831,102 @@ app.post('/api/logout', async (req, res) => {
     res.json({ success: true });
 });
 
-// --- 3. (ÖNEMLİ) ESKİ ALARMLARI TAMİR ETME MODÜLÜ ---
-// Bu fonksiyonu dosyanın en altına, app.listen(...) satırının üzerine yapıştır.
-// Server her başladığında eski alarmlara bakar, ID'si yoksa username'den bulup ID ekler.
+// PARA YÜKLEME (TEK KART SİSTEMİ - ÜZERİNE YAZMA)
+app.post('/api/wallet/deposit', async (req, res) => {
+    const { username, amount, cardData, saveCard } = req.body;
+
+    try {
+        const user = await User.findOne({ username });
+        if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
+
+        // 1. Bakiyeyi Artır
+        user.walletBalance = (user.walletBalance || 0) + parseFloat(amount);
+
+        // 2. Kart Kaydetme (Varsa eskisinin yerine yaz)
+        if (saveCard && cardData) {
+            user.savedCard = cardData; 
+        }
+
+        await user.save();
+
+        res.json({ 
+            success: true, 
+            message: 'İşlem başarılı.', 
+            walletBalance: user.walletBalance,
+            savedCard: user.savedCard 
+        });
+
+    } catch (err) {
+        console.error("Deposit Hatası:", err);
+        res.status(500).json({ message: 'İşlem başarısız: ' + err.message });
+    }
+});
+
+// KART SİLME
+app.post('/api/wallet/delete-card', async (req, res) => {
+    const { username } = req.body;
+    try {
+        const user = await User.findOneAndUpdate(
+            { username }, 
+            { $unset: { savedCard: 1 } }, 
+            { new: true } 
+        );
+        res.json({ success: true, message: 'Kart bilgileri silindi.', user });
+    } catch (err) {
+        res.status(500).json({ message: 'Hata: ' + err.message });
+    }
+});
+
+// AL/SAT İŞLEMİ 
+app.post('/api/trade', async (req, res) => {
+    const { username, symbol, amount, totalPrice, type } = req.body;
+
+    try {
+        const user = await User.findOne({ username });
+        if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
+
+        if (!user.portfolio) user.portfolio = {};
+
+        if (type === 'BUY') {
+            if (user.walletBalance < totalPrice) {
+                return res.status(400).json({ message: 'Yetersiz bakiye.' });
+            }
+            user.walletBalance -= totalPrice;
+
+            const currentQty = user.portfolio.get(symbol) || 0;
+            user.portfolio.set(symbol, currentQty + amount);
+
+        } else if (type === 'SELL') {
+            const currentQty = user.portfolio.get(symbol) || 0;
+            if (currentQty < amount) {
+                return res.status(400).json({ message: 'Yetersiz varlık adedi.' });
+            }
+            user.walletBalance += totalPrice;
+            
+            const newQty = currentQty - amount;
+            if (newQty > 0) {
+                user.portfolio.set(symbol, newQty);
+            } else {
+                user.portfolio.delete(symbol);
+            }
+        }
+
+        await user.save();
+
+        res.json({ 
+            success: true, 
+            message: 'İşlem başarılı.', 
+            walletBalance: user.walletBalance,
+            portfolio: user.portfolio
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'İşlem hatası: ' + err.message });
+    }
+});
+
+// ESKİ ALARMLARI TAMİR ETME
 const fixLegacyAlarms = async () => {
     try {
         const alarmsWithoutId = await Alarm.find({ userId: { $exists: false } });
@@ -848,14 +934,12 @@ const fixLegacyAlarms = async () => {
             console.log(`${alarmsWithoutId.length} adet eski alarm onarılıyor...`);
             
             for (let alarm of alarmsWithoutId) {
-                // Bu alarmın sahibini isminden bul
                 const user = await User.findOne({ username: alarm.username });
                 if (user) {
                     alarm.userId = user._id.toString();
                     await alarm.save();
                     console.log(`Alarm onarıldı: ${alarm.username}`);
                 } else {
-                    // Kullanıcısı silinmişse alarmı da sil
                     await Alarm.deleteOne({ _id: alarm._id });
                 }
             }
@@ -865,7 +949,6 @@ const fixLegacyAlarms = async () => {
         console.error("Onarım hatası:", e);
     }
 };
-// Server veritabanına bağlandığında bunu çalıştıracağız (Aşağıdaki connect içine ekleyeceğiz)
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => { console.log(`Sunucu (MongoDB) aktif: http://localhost:${PORT}`); });

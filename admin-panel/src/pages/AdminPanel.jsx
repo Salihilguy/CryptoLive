@@ -83,16 +83,13 @@ const AdminPanel = () => {
 
     const handleReply = async (messageId) => {
         const text = replyTexts[messageId];
-        
-        // Boş mesaj kontrolü
+
         if (!text || text.trim() === "") {
             toast.warn("Lütfen bir yanıt yazın.");
             return;
         }
 
         try {
-            // ARTIK SADECE 2 VERİ GÖNDERİYORUZ: (ID, MESAJ)
-            // api.js'den username'i sildiğimiz için burası eşleşmiş oldu.
             await AuthService.adminReplySupport(messageId, text);
             
             setReplyTexts({ ...replyTexts, [messageId]: '' });
@@ -311,7 +308,6 @@ const AdminPanel = () => {
                                                 style={{ flex:1, background:'#15151b', border:'1px solid #444', color:'white', borderRadius:'4px', padding:'5px', fontSize:'0.85rem' }}
                                             />
                                             <button 
-                                                // username'i de gönderiyoruz
                                                 onClick={() => handleReply(msg.id, msg.username)} 
                                                 style={{ background:'#007aff', border:'none', borderRadius:'4px', color:'white', cursor:'pointer', fontSize:'0.9rem', padding:'0 10px' }}
                                             >

@@ -59,7 +59,10 @@ const FlashCell = ({ value, type = 'text', prefix = '', suffix = '', align = 'ri
     );
 };
 
+// PORTFOLIO CHART 
 const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
+    const { t } = useTranslation();
+
     const labels = [];
     const dataValues = [];
     const backgroundColors = [];
@@ -70,8 +73,9 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
     ];
 
     const balance = parseFloat(walletBalance) || 0;
+
     if (balance > 0) {
-        labels.push('Nakit (TL)');
+        labels.push(t('portfolio.cash_label'));
         dataValues.push(balance);
         backgroundColors.push('#00ff88');
         borderColors.push('#00331a');
@@ -104,7 +108,7 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
         return (
             <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', color:'#666'}}>
                 <div style={{fontSize:'3rem', marginBottom:'10px'}}>📉</div>
-                <div>Henüz varlığınız bulunmuyor.</div>
+                <div style={{fontSize:'0.9rem'}}>{t('portfolio.empty')}</div>
             </div>
         );
     }
@@ -113,7 +117,7 @@ const PortfolioChart = ({ portfolio, coins, walletBalance, usdRate }) => {
         labels: labels,
         datasets: [
             {
-                label: 'Değer (TL)',
+                label: t('portfolio.value'), 
                 data: dataValues,
                 backgroundColor: backgroundColors,
                 borderColor: borderColors,
@@ -265,84 +269,64 @@ function App() {
     socket.on("tickerUpdate", handleDataUpdate);
     socket.on("marketUpdate", handleDataUpdate);
 
+    // SOCKET BİLDİRİM DİNLEYİCİSİ 
     socket.on('notification', (notif) => {
         if (notif.targetUser) {
             if (!currentUser || currentUser.username !== notif.targetUser) return;
         }
         
         let finalColor = '#00d2ff';
-        let displayTitle = notif.title || "Bildirim"; 
+        if (notif.type === 'error') finalColor = '#ff4d4d';
+        else if (notif.type === 'success') finalColor = '#00ff88';
+        else if (notif.type === 'support_reply') finalColor = '#e0aaff';
 
-        if (notif.type === 'error') {
-            finalColor = '#ff4d4d'; 
-            displayTitle = "Hata";
-        } else if (notif.type === 'success') {
-            finalColor = '#00ff88'; 
-            displayTitle = "Başarılı";
-        } else if (notif.type === 'support_reply') {
-            finalColor = '#e0aaff'; 
-            displayTitle = t('support.reply_title') || "Destek Yanıtı";
+        let keyToTranslate = notif.title; 
+
+        if (!keyToTranslate) {
+            if (notif.type === 'success') keyToTranslate = 'status.success';
+            else if (notif.type === 'error') keyToTranslate = 'status.error';
+            else if (notif.type === 'support_reply') keyToTranslate = 'support.reply_title';
+            else keyToTranslate = 'status.default_title';
         }
 
-        const CustomToastContent = () => (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <span style={{ 
-                    color: finalColor, 
-                    fontWeight: '800', 
-                    fontSize: '1rem', 
-                    borderBottom: `1px solid ${finalColor}`,
-                    paddingBottom: '4px',
-                    marginBottom: '4px',
-                    display: 'block' 
-                }}>
-                    {displayTitle}
-                </span>
+        const CustomToastContent = () => {
 
-                {notif.type === 'support_reply' ? (
-                    /* DESTEK MESAJI TASARIMI */
-                    <div style={{ fontSize:'0.9rem' }}>
-                        <div style={{ 
-                            background:'rgba(255,255,255,0.05)', 
-                            padding:'8px', 
-                            borderRadius:'6px', 
-                            marginBottom:'8px', 
-                            color:'#aaa', 
-                            fontStyle:'italic',
-                            fontSize: '0.8rem'
-                        }}>
-                            <span style={{ fontWeight:'bold', display:'block', marginBottom:'2px', color:'#666' }}>
-                                {t('notifications_panel.you')}:
-                            </span>
-                            "{notif.originalMessage}"
-                        </div>
+            const displayTitle = t(keyToTranslate);
+            const displayMessage = t(notif.message, notif.params || {});
 
-                        {/* Ekibin Yanıtı */}
-                        <div style={{ 
-                            paddingLeft:'10px', 
-                            borderLeft:`3px solid ${finalColor}`, 
-                            color: 'white'
-                        }}>
-                            <span style={{ 
-                                fontSize:'0.85rem', 
-                                fontWeight:'bold', 
-                                display:'block', 
-                                color: finalColor,
-                                marginBottom: '2px'
-                            }}>
-                                {t('notifications_panel.team')}:
-                            </span>
-                            <span style={{ lineHeight: '1.4', display: 'block' }}>
-                                {notif.message}
-                            </span>
-                        </div>
-                    </div>
-                ) : (
-                    <span style={{ color: '#e0e0e0', fontSize: '0.9rem', lineHeight: '1.4' }}>
-                        {notif.message}
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <span style={{ 
+                        color: finalColor, 
+                        fontWeight: '800', 
+                        fontSize: '1rem', 
+                        borderBottom: `1px solid ${finalColor}`,
+                        paddingBottom: '4px',
+                        marginBottom: '4px',
+                        display: 'block' 
+                    }}>
+                        {displayTitle}
                     </span>
-                )}
-            </div>
-        );
+
+                    {notif.type === 'support_reply' ? (
+                        <div style={{ fontSize:'0.9rem' }}>
+                            <div style={{ background:'rgba(255,255,255,0.05)', padding:'8px', borderRadius:'6px', marginBottom:'8px', color:'#aaa', fontStyle:'italic', fontSize: '0.8rem' }}>
+                                <span style={{ fontWeight:'bold', display:'block', marginBottom:'2px', color:'#666' }}>{t('notifications_panel.you')}:</span>
+                                "{notif.originalMessage}"
+                            </div>
+                            <div style={{ paddingLeft:'10px', borderLeft:`3px solid ${finalColor}`, color: 'white' }}>
+                                <span style={{ fontSize:'0.85rem', fontWeight:'bold', display:'block', color: finalColor, marginBottom: '2px' }}>{t('notifications_panel.team')}:</span>
+                                <span style={{ lineHeight: '1.4', display: 'block' }}>{displayMessage}</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <span style={{ color: '#e0e0e0', fontSize: '0.9rem', lineHeight: '1.4' }}>
+                            {displayMessage}
+                        </span>
+                    )}
+                </div>
+            );
+        };
 
         const options = { position: "top-right", theme: "dark", autoClose: 8000 };
 
@@ -353,8 +337,9 @@ function App() {
 
         const newNotification = {
             id: notif._id || Date.now(),
-            title: displayTitle,
+            titleKey: keyToTranslate,
             message: notif.message,
+            params: notif.params,
             originalMessage: notif.originalMessage,
             time: new Date().toLocaleTimeString(),
             type: notif.type 
@@ -365,7 +350,7 @@ function App() {
 
         if (notif.type === 'success' && currentUser) fetchAlarms && fetchAlarms();
     });
-
+    
     socket.on('force_logout', (targetUsername) => {
         if (currentUser && currentUser.username === targetUsername) {
             toast.error("Hesabınız yönetici tarafından silindiği için oturum sonlandırıldı.", {
@@ -386,10 +371,7 @@ function App() {
                 .then(data => {
                     const formattedNotifs = data.map(n => ({
                         id: n._id,
-                        title: n.type === 'support_reply' 
-                               ? (t('support.reply_title') || 'Destek Yanıtı') 
-                               : n.title,
-                        
+                       title: n.title,                     
                         message: n.message,
                         originalMessage: n.originalMessage,
                         time: new Date(n.date).toLocaleTimeString(),
@@ -405,24 +387,14 @@ function App() {
             setNotifications([]);
             setUnreadCount(0);
         }
-    }, [currentUser, t]); 
+    }, [currentUser]); 
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
    
-  useEffect(() => {
-       if (currentUser) { 
-           fetchAlarms(); 
-           socket.emit('user_connected', currentUser.username);
-       } else { 
-           setMyAlarms([]); 
-           if (activeTab === 'ALARMS' || activeTab === 'PORTFOLIO') setActiveTab('CRYPTO'); 
-       }
-   }, [currentUser]);
-
-   const fetchAlarms = async () => {
+  const fetchAlarms = async () => {
       if(currentUser) {
           try {
             const activeUserId = currentUser.id || currentUser._id;
@@ -432,18 +404,32 @@ function App() {
       }
   };
 
-  const handleDeleteAlarm = async (alarmId) => {
-      if(!currentUser) return;
-      const activeUserId = currentUser.id || currentUser._id;
-      try {
-        await AuthService.deleteAlarm(activeUserId, currentUser.username, alarmId);
-        toast.info(t('notifications.alarm_deleted'));
-        fetchAlarms(); 
-      } catch (e) { 
-          console.error("Silme hatası:", e);
-          toast.error(t('notifications.process_failed')); 
-      }
-  };
+  useEffect(() => {
+       if (currentUser) { 
+           if(currentUser.username) {
+               socket.emit('user_connected', currentUser.username);
+           }
+
+           fetchAlarms(); 
+
+           const safePortfolio = currentUser.portfolio || {};
+           setPortfolio(safePortfolio); 
+
+           if (currentUser.walletBalance !== undefined) {
+               setWalletBalance(currentUser.walletBalance);
+           }
+
+           if (Array.isArray(currentUser.favorites)) {
+               setFavorites(currentUser.favorites);
+           }
+
+       } else { 
+           setMyAlarms([]); 
+           setPortfolio({}); 
+           setWalletBalance(0);
+           if (activeTab === 'ALARMS' || activeTab === 'PORTFOLIO') setActiveTab('CRYPTO'); 
+       }
+   }, [currentUser]);
 
   const handleToggleFavorite = async (e, symbol) => { 
       e.stopPropagation(); 
@@ -498,31 +484,63 @@ function App() {
         setTradeModalOpen(true);
     };
 
-    const handleBuyAsset = (coin, amount, totalCost) => {
-        const newBalance = walletBalance - totalCost;
-        setWalletBalance(newBalance);
+    // DATABASE ENTEGRASYONLU ALIM/SATIM 
+    const handleBuyAsset = async (coin, amount, totalCost) => {
+        if (!currentUser) return;
 
-        setPortfolio(prev => {
-            const currentQty = prev[coin.symbol] || 0;
-            return { ...prev, [coin.symbol]: currentQty + amount };
-        });
+        try {
+            // Backend'e istek at
+            const res = await AuthService.executeTrade({
+                username: currentUser.username,
+                symbol: coin.symbol,
+                amount: amount,
+                totalPrice: totalCost,
+                type: 'BUY'
+            });
 
-        toast.success(`Başarılı! ${amount} adet ${coin.symbol} alındı. (Tutar: ${totalCost.toFixed(2)} TL)`);
-        setTradeModalOpen(false);
+            if (res.success) {
+                setWalletBalance(res.walletBalance);
+                setPortfolio(res.portfolio); 
+                
+                // currentUser'ı güncelle
+                const updatedUser = { ...currentUser, walletBalance: res.walletBalance, portfolio: res.portfolio };
+                setCurrentUser(updatedUser);
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+
+                toast.success(`Başarılı! ${amount} adet ${coin.symbol} alındı.`);
+                setTradeModalOpen(false);
+            }
+        } catch (err) {
+            toast.error(err.message || "İşlem başarısız.");
+        }
     };
 
-    const handleSellAsset = (coin, amount, totalRevenue) => {
-        const newBalance = walletBalance + totalRevenue;
-        setWalletBalance(newBalance);
+    const handleSellAsset = async (coin, amount, totalRevenue) => {
+        if (!currentUser) return;
 
-        setPortfolio(prev => {
-            const currentQty = prev[coin.symbol] || 0;
-            const newQty = currentQty - amount;
-            return { ...prev, [coin.symbol]: newQty };
-        });
+        try {
+            const res = await AuthService.executeTrade({
+                username: currentUser.username,
+                symbol: coin.symbol,
+                amount: amount,
+                totalPrice: totalRevenue,
+                type: 'SELL'
+            });
 
-        toast.success(`Başarılı! ${amount} adet ${coin.symbol} satıldı. (Kazanç: ${totalRevenue.toFixed(2)} TL)`);
-        setTradeModalOpen(false);
+            if (res.success) {
+                setWalletBalance(res.walletBalance);
+                setPortfolio(res.portfolio);
+
+                const updatedUser = { ...currentUser, walletBalance: res.walletBalance, portfolio: res.portfolio };
+                setCurrentUser(updatedUser);
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+
+                toast.success(`Başarılı! ${amount} adet ${coin.symbol} satıldı.`);
+                setTradeModalOpen(false);
+            }
+        } catch (err) {
+            toast.error(err.message || "İşlem başarısız.");
+        }
     };
 
     const handleLogout = async () => {
@@ -580,6 +598,22 @@ function App() {
       } catch (err) { toast.error(t('notifications.process_failed')); }
   };
 
+  // ALARM SİLME FONKSİYONU 
+  const handleDeleteAlarm = async (alarmId) => {
+      if (!currentUser) return;
+      
+      try {
+          await AuthService.deleteAlarm(alarmId);
+
+          setMyAlarms(prev => prev.filter(a => a._id !== alarmId));
+
+          toast.info(t('notifications.alarm_deleted'));
+      } catch (err) {
+          console.error("Alarm silme hatası:", err);
+          toast.error(t('notifications.process_failed'));
+      }
+  };
+
   const toggleNotifPanel = () => {
       setShowNotifPanel(!showNotifPanel);
       if (!showNotifPanel) {
@@ -587,13 +621,33 @@ function App() {
       }
   };
 
-  const clearNotifications = () => {
-      setNotifications([]);
-      setUnreadCount(0);
+  // TEK BİLDİRİM SİLME 
+  const deleteNotification = async (id) => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+
+      if (currentUser) {
+          try {
+              await AuthService.deleteNotification(id);
+          } catch (error) {
+              console.error("Veritabanından silinirken hata oluştu:", error);
+          }
+      }
   };
 
-  const deleteNotification = (id) => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+  // TÜM BİLDİRİMLERİ TEMİZLEME
+  const clearNotifications = async () => {
+      setNotifications([]);
+      setUnreadCount(0);
+
+      if (currentUser) {
+          try {
+              await AuthService.deleteAllNotifications(currentUser.username);
+              toast.info(t('notifications_panel.cleared'));
+          } catch (error) {
+              console.error("Bildirimler temizlenemedi:", error);
+              toast.error(t('notifications.process_failed') || "İşlem başarısız.");
+          }
+      }
   };
 
   useEffect(() => { if (!currentUser && (activeTab === 'FAVORITES' || activeTab === 'PORTFOLIO')) { setActiveTab('CRYPTO'); setSelectedCoin('BTCUSDT'); } }, [currentUser, activeTab]);
@@ -637,11 +691,10 @@ function App() {
       return '$'; 
   };
 
-  const usdCoin = coins.find(c => c.symbol === 'TRY=X' || c.symbol === 'USDTRY');
-  const currentUsdRate = usdCoin ? usdCoin.price : 35.00;
+  const usdCoin = coins.find(c => c.symbol === 'USDTRY=X');
+  const currentUsdRate = usdCoin && usdCoin.price ? parseFloat(usdCoin.price) : 43.00;
 
   let processedCoins = coins.filter(coin => {
-    // BURASI DEĞİŞTİ: Alarmlar sekmesi artık düzgün filtreliyor
     if (activeTab === 'ALARMS') {
         if (!currentUser) return false;
         return myAlarms.some(alarm => alarm.symbol === coin.symbol);
@@ -754,7 +807,7 @@ function App() {
         )}
 
         {showGuestSupport && <GuestSupportModal type={guestSupportType} onClose={() => setShowGuestSupport(false)} />}
-        {showWalletModal && <WalletModal onClose={() => setShowWalletModal(false)} walletBalance={walletBalance} setWalletBalance={setWalletBalance} currentUser={currentUser} />}
+        {showWalletModal && <WalletModal onClose={() => setShowWalletModal(false)} walletBalance={walletBalance} setWalletBalance={setWalletBalance} currentUser={currentUser} setCurrentUser={setCurrentUser}/>}
         
         {/* TRADE MODAL RENDER */}
         {tradeModalOpen && tradeCoin && (
@@ -799,11 +852,28 @@ function App() {
                       
                       <div style={{display:'flex', gap:'10px'}}>
                           {/* SİL BUTONU - SADECE DÜZENLEME MODUNDA GÖRÜNÜR */}
-                          {editingAlarmId && (
-                                <button type="button" onClick={()=>{handleDeleteAlarm(editingAlarmId); setAlarmModalOpen(false);}} style={{flex:1, background:'#ff4d4d', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>
-                                    Sil
-                                </button>
-                          )}
+                                  {editingAlarmId && (
+                                      <button 
+                                          type="button" 
+                                          onClick={() => {
+                                              // Silme fonksiyonunu çağır ve modalı kapat
+                                              handleDeleteAlarm(editingAlarmId); 
+                                              setAlarmModalOpen(false);
+                                          }} 
+                                          style={{
+                                              flex:1, 
+                                              background:'#ff4d4d', 
+                                              color:'#fff', 
+                                              border:'none', 
+                                              padding:'10px', 
+                                              borderRadius:'8px', 
+                                              cursor:'pointer',
+                                              fontWeight: 'bold'
+                                          }}
+                                      >
+                                          {t('alarm_modal.btn_delete')}
+                                      </button>
+                                  )}
                           <button type="button" onClick={()=>setAlarmModalOpen(false)} style={{flex:1, background:'#333', color:'#fff', border:'none', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>
                               {t('alarm_modal.btn_cancel')}
                           </button>
@@ -905,48 +975,61 @@ function App() {
                         {showNotifPanel && (
                             <div style={{position: 'absolute', top: '40px', right: '-50px', width: '320px', background: '#1e1e2e', border: '1px solid #444', borderRadius: '12px', boxShadow: '0 5px 20px rgba(0,0,0,0.5)', zIndex: 1000, overflow:'hidden'}}>
                                 <div style={{padding: '10px 15px', borderBottom: '1px solid #333', background: '#222', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                    {/* BAŞLIK ÇEVİRİSİ */}
                                     <span style={{fontWeight: 'bold', fontSize: '0.9rem', color: '#eee'}}>{t('notifications_panel.title')}</span>
-                                    {/* BUTON ÇEVİRİSİ */}
                                     {notifications.length > 0 && <button onClick={clearNotifications} style={{background: 'none', border: 'none', color: '#ff4d4d', fontSize: '0.8rem', cursor: 'pointer'}}>{t('notifications_panel.clear')}</button>}
                                 </div>
                                 <div style={{maxHeight: '350px', overflowY: 'auto'}}>
                                     {notifications.length > 0 ? (
-                                        notifications.map(n => (
-                                            <div key={n.id} style={{padding: '12px 15px', borderBottom: '1px solid #2a2a35', fontSize: '0.85rem', position: 'relative'}}>
-                                                
-                                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '4px'}}>
-                                                    <div style={{
-                                                        fontWeight: '700', 
-                                                        color: n.type === 'success' ? '#00ff88' : (n.type === 'error' ? '#ff4d4d' : (n.type === 'support_reply' ? '#e0aaff' : '#00d2ff'))
-                                                    }}>
-                                                        {n.title}
+                                        notifications.map(n => {
+                                            // Kayıtlı anahtarı al (Örn: "status.success" veya "Başarılı")
+                                            let keyToTranslate = n.titleKey || n.title;
+
+                                            if (!keyToTranslate) {
+                                                if(n.type === 'success') keyToTranslate = 'status.success';
+                                                else if(n.type === 'error') keyToTranslate = 'status.error';
+                                                else if(n.type === 'support_reply') keyToTranslate = 'support.reply_title';
+                                                else keyToTranslate = 'status.default_title';
+                                            }
+
+                                            const displayTitle = t(keyToTranslate);
+                                            const displayMessage = t(n.message, n.params || {});
+
+                                            return (
+                                                <div key={n.id} style={{padding: '12px 15px', borderBottom: '1px solid #2a2a35', fontSize: '0.85rem', position: 'relative'}}>
+                                                    
+                                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '4px'}}>
+                                                        <div style={{
+                                                            fontWeight: '700', 
+                                                            color: n.type === 'success' ? '#00ff88' : (n.type === 'error' ? '#ff4d4d' : (n.type === 'support_reply' ? '#e0aaff' : '#00d2ff'))
+                                                        }}>
+                                                            {displayTitle}
+                                                        </div>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} 
+                                                            style={{background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1rem', padding: '0 5px', lineHeight: '1'}}
+                                                            title={t('notifications_panel.delete') || "Sil"}
+                                                        >
+                                                            &times;
+                                                        </button>
                                                     </div>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} 
-                                                        style={{background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1rem', padding: '0 5px', lineHeight: '1'}}
-                                                        title="Sil"
-                                                    >
-                                                        &times;
-                                                    </button>
+                                                    
+                                                    {n.originalMessage ? (
+                                                        <div style={{marginTop:'5px'}}>
+                                                            <div style={{background:'rgba(255,255,255,0.05)', padding:'5px', borderRadius:'4px', marginBottom:'5px', color:'#888', fontStyle:'italic', fontSize:'0.8rem'}}>
+                                                                {t('notifications_panel.you')}: "{n.originalMessage}"
+                                                            </div>
+                                                            <div style={{color:'#eee'}}>
+                                                                <em>{t('notifications_panel.team')}</em>: {displayMessage}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{color: '#ccc', marginBottom: '5px', paddingRight: '15px'}}>{displayMessage}</div>
+                                                    )}
+
+                                                    <div style={{fontSize: '0.7rem', color: '#666', textAlign: 'right', marginTop:'5px'}}>{n.time}</div>
                                                 </div>
-
-                                                {n.originalMessage ? (
-                                                    <div style={{marginTop:'5px'}}>
-                                                        <div style={{background:'rgba(255,255,255,0.05)', padding:'5px', borderRadius:'4px', marginBottom:'5px', color:'#888', fontStyle:'italic', fontSize:'0.8rem'}}>
-                                                            {t('notifications_panel.you')}: "{n.originalMessage}"
-                                                        </div>
-                                                        <div style={{color:'#eee'}}>
-                                                            <em>{t('notifications_panel.team')}</em>: {n.message}
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div style={{color: '#ccc', marginBottom: '5px', paddingRight: '15px'}}>{n.message}</div>
-                                                )}
-
-                                                <div style={{fontSize: '0.7rem', color: '#666', textAlign: 'right', marginTop:'5px'}}>{n.time}</div>
-                                            </div>
-                                        ))
+                                            );
+                                        })
                                     ) : (
                                         <div style={{padding: '20px', textAlign: 'center', color: '#666', fontSize: '0.9rem'}}>{t('notifications_panel.empty')}</div>
                                     )}
@@ -997,7 +1080,6 @@ function App() {
 
           <div style={{ width: '100%', display: 'flex', gap: '10px', padding: '0 5px', marginBottom: '10px', overflowX: 'auto', paddingBottom:'5px' }}>
               {markets.map(m => {
-                  // BURASI DEĞİŞTİ: Sadece giriş yapmamışsa ALARMS gizlensin
                   if (m.id === 'ALARMS' && !currentUser) return null;
                   if (m.id === 'FAVORITES' && !currentUser) return null;
                   if (m.id === 'PORTFOLIO' && !currentUser) return null; 
@@ -1018,7 +1100,7 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '500px 1fr', gap: '15px', width: '100%', height: 'calc(100vh - 180px)' }}>
               <div style={{ background: '#1e1e2e', borderRadius: '12px', overflow:'hidden', display:'flex', flexDirection:'column', border:'1px solid #333' }}>
                   
-                  {/* ALARM TABLOSU - GÜNCELLENMİŞ HALİ (SIKIŞTIRILMIŞ) */}
+                  {/* ALARM TABLOSU */}
                   {activeTab === 'ALARMS' ? (
                       <>
                         <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a' }}>
@@ -1030,28 +1112,26 @@ function App() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                                 <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
                                     <tr style={{ color: '#888', fontSize:'0.75rem', borderBottom:'1px solid #444' }}>
-                                        {/* SIKIŞTIRILMIŞ SÜTUNLAR */}
-                                        <th style={{ padding: '10px', textAlign:'left', width: '200px' }}>Enstrüman</th>
-                                        <th style={{ padding: '10px', textAlign:'left', width: '120px' }}>Fiyat</th>
-                                        <th style={{ padding: '10px', textAlign:'center', width: '120px' }}>Hedef Fiyat</th>
+                                        <th style={{ padding: '10px', textAlign:'left', width: '200px' }}>{t('table.instrument')}</th>
+                                        <th style={{ padding: '10px', textAlign:'left', width: '120px' }}>{t('table.price')}</th>
+                                        <th style={{ padding: '10px', textAlign:'center', width: '120px' }}>{t('alarms_table.target_price')}</th>
                                         {/* BOŞLUK DOLDURUCU (SPACER) */}
                                         <th style={{ width: 'auto' }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {processedCoins.length > 0 ? processedCoins.map((coin) => {
-                                        // Bu coine ait alarmı buluyoruz
                                         const alarm = myAlarms.find(a => a.symbol === coin.symbol);
                                         
                                         return (
                                         <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #333', cursor: 'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent', transition: 'background 0.2s' }}>
                                             
-                                            {/* İSİM VE LOGO - DÜZENLEME BUTONU SOLDA */}
+                                            {/* İSİM VE LOGO */}
                                             <td style={{ padding: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}> 
-                                                {/* KALEM BUTONU BURADA */}
+                                                {/* DÜZENLEME BUTONU */}
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); openEditAlarmModal(alarm); }}
-                                                    title="Düzenle"
+                                                    title={t('alarm_modal.title_edit') || "Düzenle"}
                                                     style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.1rem', marginRight:'5px'}}
                                                 >
                                                     ✏️
@@ -1059,7 +1139,9 @@ function App() {
 
                                                 {coin.logo && <img src={coin.logo} alt={coin.name} width="24" height="24" style={{ borderRadius: '50%', background:'white' }} />}
                                                 <div> 
-                                                    <div style={{fontWeight:'700', fontSize:'0.9rem', color:'#eee'}}>{coin.name}</div> 
+                                                    <div style={{fontWeight:'700', fontSize:'0.9rem', color:'#eee'}}>
+                                                        {getLocalizedAssetName(coin)}
+                                                    </div> 
                                                     <div style={{ fontSize: '0.7rem', color: '#777' }}>{coin.symbol}</div> 
                                                 </div> 
                                             </td>
@@ -1077,13 +1159,70 @@ function App() {
                                             {/* SPACER HÜCRESİ */}
                                             <td></td>
                                         </tr>
-                                        )}) : ( <tr><td colSpan="4" style={{padding:'20px', textAlign:'center', color:'#666'}}>Alarm bulunamadı.</td></tr> )
+                                        )}) : ( <tr><td colSpan="4" style={{padding:'20px', textAlign:'center', color:'#666'}}>{t('alarm_modal.no_alarm')}</td></tr> )
                                     }
                                 </tbody>
                             </table>
                         </div>
                       </>
-                  ) : (
+                  ) : activeTab === 'PORTFOLIO' ? (
+                      <>
+                        <div style={{ padding:'20px', borderBottom:'1px solid #333', background:'#22222a' }}>
+                            <h3 style={{margin:0, fontSize:'1.1rem', fontWeight:'700', color:'#00d2ff'}}>{t('portfolio.title')}</h3>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', padding: '15px', marginTop: '15px', border:'1px solid #333' }}>
+                                <div style={{ fontSize: '0.85rem', color: '#aaa' }}>{t('portfolio.total_asset_value')}</div>
+                                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00ff88', fontFamily:'Consolas' }}>
+                                    {totalPortfolioValueTL.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ overflowY:'auto', overflowX: 'auto', flex:1, width:'100%' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead style={{ position:'sticky', top:0, background:'#1e1e2e', zIndex:10 }}>
+                                    <tr style={{ color: '#888', fontSize:'0.75rem', borderBottom:'1px solid #444' }}>
+                                        <th style={{ padding: '10px', textAlign:'left' }}>{t('portfolio.asset')}</th>
+                                        <th style={{ padding: '10px', textAlign:'center' }}>{t('portfolio.amount')}</th>
+                                        <th style={{ padding: '10px', textAlign:'right' }}>{t('portfolio.value')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {/* Nakit */}
+                                    <tr style={{ borderBottom: '1px solid #333', background:'rgba(0, 255, 136, 0.05)' }}>
+                                        <td style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight:'bold', color:'#eee' }}>
+                                            <span style={{ fontSize: '1.2rem' }}>💳</span>
+                                            TL {t('portfolio.wallet_balance').replace('(TL)', '')}
+                                        </td>
+                                        <td style={{ padding: '12px', textAlign:'center', color:'#aaa' }}>-</td>
+                                        <td style={{ padding: '12px', textAlign: 'right', color: '#00ff88', fontWeight:'bold', fontFamily:'Consolas' }}>
+                                            {walletBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                        </td>
+                                    </tr>
+                                    {/* Coinler */}
+                                    {processedCoins.length > 0 ? processedCoins.map((coin) => {
+                                        const isTrAsset = ['BIST', 'GRAM-ALTIN', 'CEYREK-ALTIN', 'YARIM-ALTIN', 'TAM-ALTIN', 'GRAM-GUMUS'].includes(coin.type) || coin.symbol.endsWith('.IS');
+                                        const rate = isTrAsset ? 1 : currentUsdRate;
+                                        const totalVal = coin.price * coin.myQty * rate;
+                                        if(coin.myQty <= 0) return null;
+                                        return (
+                                            <tr key={coin.symbol} onClick={() => setSelectedCoin(coin.symbol)} style={{ borderBottom: '1px solid #333', cursor:'pointer', background: selectedCoin === coin.symbol ? 'rgba(0, 210, 255, 0.05)' : 'transparent' }}>
+                                                <td style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    {coin.logo && <img src={coin.logo} alt={coin.name} width="24" height="24" style={{ borderRadius: '50%', background:'white' }} />}
+                                                    <div>
+                                                        <div style={{fontWeight:'700', fontSize:'0.9rem', color:'#eee'}}>{getLocalizedAssetName(coin)}</div>
+                                                        <div style={{fontSize:'0.7rem', color:'#777'}}>{coin.symbol}</div>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '12px', textAlign:'center', fontSize:'0.9rem', color:'#ccc' }}>{coin.myQty}</td>
+                                                <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold', fontFamily:'Consolas', color:'#eee' }}>{totalVal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺</td>
+                                            </tr>
+                                        );
+                                    }) : ( walletBalance === 0 && <tr><td colSpan="3" style={{padding:'30px', textAlign:'center', color:'#666'}}>{t('portfolio.empty')}</td></tr> )}
+                                </tbody>
+                            </table>
+                        </div>
+                      </>
+              ) : (
                       <>
                         <div style={{ padding:'12px 15px', borderBottom:'1px solid #333', background:'#22222a', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                             <h3 style={{margin:0, fontSize:'1rem', fontWeight:'700', color:'#eee'}}>{markets.find(m => m.id === activeTab)?.label}</h3>
@@ -1106,12 +1245,12 @@ function App() {
                                         <th style={{ padding: '10px 5px 10px 8px', textAlign:'left', width:'80px', borderRight:'1px solid #444' }} onClick={() => handleSort('price')}>{t('table.price')}</th>
                                         
                                         {/* DEĞİŞİMLER (ORTALI) */}
-                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change')}>24S</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>1H</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>1A</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>3A</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change1y')}>1Y</th>
-                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change5y')}>5Y</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change')}>{t('table.change_24h')}</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>{t('table.change_1w')}</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>{t('table.change_1m')}</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }}>{t('table.change_3m')}</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change1y')}>{t('table.change_1y')}</th>
+                                        <th style={{ padding: '5px', textAlign:'center', width:'60px', borderRight:'1px solid #444' }} onClick={() => handleSort('change5y')}>{t('table.change_5y')}</th>
                                         
                                         {/* PİYASA DEĞERİ */}
                                         <th style={{ padding: '5px', textAlign:'center', width:'90px', borderRight:'1px solid #444' }}>{t('table.market_cap')}</th>
@@ -1151,11 +1290,11 @@ function App() {
                                                 whiteSpace: 'nowrap',
                                                 ...borderStyle
                                             }}> 
-                                                {/* YENİ EKLENEN PORTFÖY AL/SAT BUTONU */}
+                                                {/* PORTFÖY AL/SAT BUTONU */}
                                                 {activeTab === 'PORTFOLIO' && (
                                                     <button 
                                                         onClick={(e) => {e.stopPropagation(); openTradeModal(e, coin)}} 
-                                                        title="Al/Sat"
+                                                        title={t('table.trade_button')}
                                                         style={{
                                                             background: 'linear-gradient(90deg, #00ff88, #00cc6a)',
                                                             color: '#000',
@@ -1168,7 +1307,7 @@ function App() {
                                                             marginRight: '8px'
                                                         }}
                                                     >
-                                                        ⇄
+                                                        {t('table.trade_button')}
                                                     </button>
                                                 )}
 
@@ -1233,7 +1372,7 @@ function App() {
                   {activeTab === 'PORTFOLIO' ? (
                         /* PORTFÖY DAİRE GRAFİĞİ */
                         <div style={{width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px'}}>
-                            <h3 style={{color:'#eee', marginBottom:'15px'}}>Varlık Dağılımı</h3>
+                            <h3 style={{color:'#eee', marginBottom:'15px'}}>{t('portfolio.distribution')}</h3>
                             <div style={{flex: 1, width: '100%', minHeight: '350px'}}> 
                                 <PortfolioChart portfolio={portfolio} coins={coins} walletBalance={walletBalance} usdRate={currentUsdRate} />
                             </div>
@@ -1252,7 +1391,7 @@ function App() {
                                         <span style={{ color:'#777', fontSize: '0.8rem' }}>TradingView Analiz</span>
                                     </div>
                                     
-                                    {/* AL/SAT BUTONU (YENİDEN EKLENDİ) */}
+                                    {/* AL/SAT BUTONU */}
                                     {selectedCoin && currentUser && (
                                         <button 
                                             onClick={(e) => openTradeModal(e, coins.find(c => c.symbol === selectedCoin) || {symbol: selectedCoin, price:0, name:selectedCoin})}
@@ -1268,7 +1407,7 @@ function App() {
                                                 boxShadow: '0 0 10px rgba(0, 255, 136, 0.2)'
                                             }}
                                         >
-                                            ⇄ AL / SAT
+                                            {t('table.trade_button')}
                                         </button>
                                     )}
                                 </div>
@@ -1282,7 +1421,25 @@ function App() {
                                 </div>
                             </div>
                             <div style={{ flex: 1, width: '100%', minHeight: '0', overflow:'hidden', borderRadius:'8px', position:'relative' }}> 
-                                {selectedCoin ? (<div key={getTradingViewSymbol(selectedCoin)} style={{ width: '100%', height: '100%' }}><TradingViewWidget symbol={getTradingViewSymbol(selectedCoin)} theme="dark" autosize interval="D" timezone="Etc/UTC" style="1" locale="tr" toolbar_bg="#f1f3f6" enable_publishing={false} hide_side_toolbar={false} allow_symbol_change={true} /></div>) : ( <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'8px', fontSize:'0.9rem' }}>Grafik yükleniyor...</div> )}
+                                {selectedCoin ? (
+                                    <div key={getTradingViewSymbol(selectedCoin)} style={{ width: '100%', height: '100%' }}>
+                                        <TradingViewWidget 
+                                            symbol={getTradingViewSymbol(selectedCoin)} 
+                                            theme="dark" 
+                                            autosize 
+                                            interval="D" 
+                                            timezone="Etc/UTC" 
+                                            style="1" 
+                                            locale={i18n.language.startsWith('tr') ? 'tr' : 'en'} 
+                                            toolbar_bg="#f1f3f6" 
+                                            enable_publishing={false} 
+                                            hide_side_toolbar={false} 
+                                            allow_symbol_change={true} 
+                                        />
+                                    </div>
+                                ) : ( 
+                                    <div style={{ display:'flex', height:'100%', justifyContent:'center', alignItems:'center', color:'#444', border:'2px dashed #333', borderRadius:'8px', fontSize:'0.9rem' }}>Grafik yükleniyor...</div> 
+                                )}
                             </div>
                         </>
                   )}
@@ -1298,6 +1455,7 @@ const overlayStyle = {position:'absolute', top:0, left:0, width:'100%', height:'
 
 // TRADE MODAL
 const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, getTradingViewSymbol, usdRate }) => {
+    const { t, i18n } = useTranslation(); 
     const [mode, setMode] = useState('BUY'); 
     const [amount, setAmount] = useState(''); 
     const [totalPriceUsd, setTotalPriceUsd] = useState(0); 
@@ -1309,6 +1467,8 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
       
     const effectiveRate = isTrAsset ? 1 : usdRate;
     const currencySymbol = isTrAsset ? '₺' : '$';
+
+    const currentLang = i18n.language.startsWith('tr') ? 'tr' : 'en';
 
     useEffect(() => {
         const val = parseFloat(amount);
@@ -1325,19 +1485,19 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
     const handleTransaction = (e) => {
         e.preventDefault();
         if (!amount || parseFloat(amount) <= 0) {
-            toast.warn("Geçerli bir miktar girin.");
+            toast.warn(t('trade.valid_amount_warning'));
             return;
         }
 
         if (mode === 'BUY') {
             if (totalPriceTL > currentBalance) {
-                toast.error(`Yetersiz Bakiye! Gereken: ${totalPriceTL.toFixed(2)} ₺`);
+                toast.error(`${t('trade.insufficient_balance')} ${t('trade.transaction_total')}: ${totalPriceTL.toFixed(2)} ₺`);
                 return;
             }
             onBuy(coin, parseFloat(amount), totalPriceTL);
         } else {
             if (parseFloat(amount) > currentAssetQty) {
-                toast.error(`Yetersiz ${coin.symbol} bakiyesi!`);
+                toast.error(t('trade.insufficient_asset', { symbol: coin.symbol }));
                 return;
             }
             onSell(coin, parseFloat(amount), totalPriceTL);
@@ -1370,10 +1530,27 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
             }}>
                 {/* SOL TARAF - GRAFİK */}
                 <div style={{ flex: 2, borderRight: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '10px', background: '#15151b', borderBottom: '1px solid #333' }}>
-                        <span style={{ fontWeight: 'bold', color: '#eee' }}>{coin.name} ({coin.symbol})</span>
-                        {!isTrAsset && <span style={{float:'right', color:'#00d2ff', fontSize:'0.8rem'}}>Kur: {usdRate.toFixed(2)} ₺</span>}
+
+                    <div style={{ padding: '12px', background: '#15151b', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 'bold', color: '#eee', fontSize: '1.1rem' }}>
+                            {coin.name} <span style={{color:'#888', fontSize:'0.9rem'}}>({coin.symbol})</span>
+                        </span>
+                        
+                        {/* Eğer Türk varlığı DEĞİLSE güncel Dolar kurunu göster */}
+                        {!isTrAsset && (
+                            <div style={{
+                                background: 'rgba(0, 210, 255, 0.1)', 
+                                border: '1px solid #00d2ff', 
+                                borderRadius: '6px', 
+                                padding: '4px 10px'
+                            }}>
+                                <span style={{ color:'#00d2ff', fontSize:'0.85rem', fontFamily:'Consolas', fontWeight:'bold' }}>
+                                    USD/TRY: {usdRate.toFixed(2)} ₺
+                                </span>
+                            </div>
+                        )}
                     </div>
+
                     <div style={{ flex: 1, position: 'relative' }}>
                         <TradingViewWidget 
                             symbol={getTradingViewSymbol(coin)} 
@@ -1382,7 +1559,7 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
                             interval="D" 
                             hide_side_toolbar={true} 
                             style="1" 
-                            locale="tr" 
+                            locale={currentLang} 
                         />
                     </div>
                 </div>
@@ -1390,7 +1567,7 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
                 {/* SAĞ TARAF - İŞLEM MENÜSÜ */}
                 <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', background: '#1a1a24' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#eee' }}>İşlem Yap</h2>
+                        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#eee' }}>{t('trade.title')}</h2>
                         <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
                     </div>
 
@@ -1398,28 +1575,28 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
                         <button 
                             onClick={() => { setMode('BUY'); setAmount(''); }} 
                             style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: mode === 'BUY' ? '#00ff88' : 'transparent', color: mode === 'BUY' ? '#000' : '#888', fontWeight: 'bold', cursor: 'pointer', transition: '0.3s' }}>
-                            AL
+                            {t('trade.buy')}
                         </button>
                         <button 
                             onClick={() => { setMode('SELL'); setAmount(''); }} 
                             style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: mode === 'SELL' ? '#ff4d4d' : 'transparent', color: mode === 'SELL' ? '#fff' : '#888', fontWeight: 'bold', cursor: 'pointer', transition: '0.3s' }}>
-                            SAT
+                            {t('trade.sell')}
                         </button>
                     </div>
 
                     <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '0.9rem', color: '#aaa' }}>
-                            <span>Cüzdan Bakiyesi:</span>
+                            <span>{t('trade.wallet_balance')}:</span>
                             <span style={{ color: '#eee', fontWeight: 'bold' }}>{currentBalance.toFixed(2)} ₺</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#aaa' }}>
-                            <span>Sahip Olunan:</span>
+                            <span>{t('trade.owned')}:</span>
                             <span style={{ color: '#eee', fontWeight: 'bold' }}>{currentAssetQty} {coin.symbol}</span>
                         </div>
                     </div>
 
                     <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                        <div style={{ fontSize: '0.8rem', color: '#888' }}>Güncel Fiyat</div>
+                        <div style={{ fontSize: '0.8rem', color: '#888' }}>{t('trade.current_price')}</div>
                         <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: mode === 'BUY' ? '#00ff88' : '#ff4d4d' }}>
                             {coin.price.toFixed(2)} <span style={{ fontSize: '1rem' }}>{currencySymbol}</span>
                         </div>
@@ -1428,7 +1605,7 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
                     <form onSubmit={handleTransaction} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                         <div>
                             <label style={{ fontSize: '0.85rem', color: '#ccc', display: 'block', marginBottom: '5px' }}>
-                                Miktar ({coin.symbol})
+                                {t('trade.amount')} ({coin.symbol})
                                 <span onClick={setMax} style={{ float: 'right', color: '#00d2ff', cursor: 'pointer', fontSize: '0.75rem' }}>MAX</span>
                             </label>
                             <input 
@@ -1444,18 +1621,20 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
                         {/* FİYAT HESAPLAMA GÖSTERGESİ */}
                         <div style={{ padding: '10px', background: '#111', borderRadius: '8px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                <span style={{ color: '#888', fontSize: '0.9rem' }}>Tutar ({currencySymbol}):</span>
+                                <span style={{ color: '#888', fontSize: '0.9rem' }}>{t('trade.total')} ({currencySymbol}):</span>
                                 <span style={{ fontWeight: 'bold', color: '#ddd' }}>{totalPriceUsd.toFixed(2)} {currencySymbol}</span>
                             </div>
                             
                             {!isTrAsset && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop:'1px solid #333', paddingTop:'5px' }}>
-                                    <span style={{ color: '#00d2ff', fontSize: '0.9rem' }}>İşlem Tutarı (TL):</span>
-                                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#eee' }}>{totalPriceTL.toFixed(2)} ₺</span>
-                                </div>
-                            )}
-                            {isTrAsset && (
-                                <div style={{ textAlign:'right', fontSize:'0.8rem', color:'#666' }}>*TL varlıklarında kur farkı yoktur.</div>
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop:'1px solid #333', paddingTop:'5px' }}>
+                                        <span style={{ color: '#00d2ff', fontSize: '0.9rem' }}>{t('trade.transaction_total')} (TL):</span>
+                                        <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#eee' }}>{totalPriceTL.toFixed(2)} ₺</span>
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: '#555', textAlign: 'right', marginTop: '2px', fontStyle:'italic' }}>
+                                        {t('trade.rate_source')}: Yahoo Finance API
+                                    </div>
+                                </>
                             )}
                         </div>
 
@@ -1470,7 +1649,7 @@ const TradeModal = ({ coin, onClose, currentBalance, portfolio, onBuy, onSell, g
                             cursor: 'pointer', 
                             marginTop: '10px'
                         }}>
-                            {mode === 'BUY' ? `${coin.symbol} AL` : `${coin.symbol} SAT`}
+                            {mode === 'BUY' ? `${coin.symbol} ${t('trade.buy_action')}` : `${coin.symbol} ${t('trade.sell_action')}`}
                         </button>
                     </form>
                 </div>
@@ -1652,7 +1831,7 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
                     </div>
                 )}
 
-                {/* 4. YARDIM (DÜZELTİLDİ) */}
+                {/* 4. YARDIM */}
                 <SectionBtn id={4} icon="💬" title={t('profile.help_support')} color="#00ff88" />
                 {activeSection === 4 && (
                     <div style={{padding:'20px', background:'#1a2420'}}>
@@ -1685,320 +1864,303 @@ const ProfileModal = ({ user, onClose, onUpdateSuccess }) => {
     );
 };
 
-const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: setParentBalance, currentUser }) => {
+// WALLET MODAL 
+const WalletModal = ({ onClose, walletBalance: parentBalance, setWalletBalance: setParentBalance, currentUser, setCurrentUser }) => {
+    const { t } = useTranslation(); 
     const [step, setStep] = useState(0);
+    
+    const hasSavedCard = !!(currentUser?.savedCard?.number);
+    
+    // Varsayılan olarak kayıtlı kart varsa onu seçili getir
+    const [useSavedCard, setUseSavedCard] = useState(hasSavedCard);
+    const [saveCardChecked, setSaveCardChecked] = useState(false);
+
+    // Form State
     const [cardNumber, setCardNumber] = useState('');
     const [cardHolder, setCardHolder] = useState('');
     const [expiryDate, setExpiryDate] = useState('');
     const [cvv, setCvv] = useState('');
     const [amount, setAmount] = useState('');
+    
     const [isLoading, setIsLoading] = useState(false);
     const [walletBalance, setWalletBalance] = useState(parentBalance || 0);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
+    // GİRİŞ KONTROLÜ
     if (!currentUser) {
         return (
             <div style={modalStyle}>
                 <div style={overlayStyle} onClick={onClose}></div>
                 <div style={{
                     background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
-                    borderRadius: '20px',
-                    border: '2px solid #ff4d4d',
-                    width: '380px',
-                    zIndex: 10001,
-                    position: 'relative',
-                    padding: '40px',
-                    textAlign: 'center',
-                    boxShadow: '0 0 40px rgba(255, 77, 77, 0.3)'
+                    borderRadius: '20px', border: '2px solid #ff4d4d', width: '380px', zIndex: 10001, position: 'relative', padding: '40px', textAlign: 'center', boxShadow: '0 0 40px rgba(255, 77, 77, 0.3)'
                 }}>
                     <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🔐</div>
-                    <h2 style={{ color: '#ff4d4d', margin: '0 0 15px 0', fontSize: '1.3rem' }}>Giriş Gerekli</h2>
+                    <h2 style={{ color: '#ff4d4d', margin: '0 0 15px 0', fontSize: '1.3rem' }}>
+                        {t('wallet.login_required_title')}
+                    </h2>
                     <p style={{ color: '#ccc', marginBottom: '25px', lineHeight: '1.5' }}>
-                        Sanal cüzdana erişmek için lütfen giriş yapınız.
+                        {t('wallet.login_required_desc')}
                     </p>
-                    <button onClick={onClose} style={{background: 'linear-gradient(90deg, #ff4d4d, #ff6b6b)', border: 'none', color: 'white', padding: '12px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem'}}>Kapat</button>
+                    <button onClick={onClose} style={{background: 'linear-gradient(90deg, #ff4d4d, #ff6b6b)', border: 'none', color: 'white', padding: '12px 30px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem'}}>
+                        {t('wallet.close')}
+                    </button>
                 </div>
             </div>
         );
     }
 
+    // HANDLERS 
     const handleCardNumberChange = (e) => {
         let value = e.target.value.replace(/\s/g, '');
-        if (value.length <= 16) {
-            value = value.replace(/(\d{4})/g, '$1 ').trim();
-            setCardNumber(value);
-        }
+        if (!/^\d*$/.test(value)) return;
+        if (value.length <= 16) setCardNumber(value.replace(/(\d{4})/g, '$1 ').trim());
     };
-
     const handleExpiryChange = (e) => {
         let value = e.target.value.replace(/\D/g, '');
         if (value.length <= 4) {
-            if (value.length >= 2) {
-                value = value.slice(0, 2) + '/' + value.slice(2);
-            }
+            if (value.length >= 2) value = value.slice(0, 2) + '/' + value.slice(2);
             setExpiryDate(value);
         }
     };
-
     const handleCvvChange = (e) => {
         let value = e.target.value.replace(/\D/g, '');
         if (value.length <= 3) setCvv(value);
     };
-
     const handleAmountChange = (e) => {
         const value = e.target.value;
         if (!isNaN(value) && value >= 0) setAmount(value);
     };
 
+    // KART SİLME (TEK KART)
+    const handleDeleteSavedCard = async () => {
+        if(!window.confirm(t('wallet.delete_card') + "?")) return;
+        setIsLoading(true);
+        try {
+            await AuthService.deleteCard(currentUser.username);
+
+            const updatedUser = { ...currentUser, savedCard: undefined };
+            setCurrentUser(updatedUser);
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            
+            setUseSavedCard(false); 
+            toast.info(t('wallet.card_deleted'));
+        } catch (err) {
+            toast.error(t('wallet.process_failed'));
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // ÖDEME GÖNDERME 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setErrorMessage('');
         
         if (step === 0) {
-            if (!cardNumber || cardNumber.replace(/\s/g, '').length !== 16) { setErrorMessage('Kart numarası 16 haneli olmalıdır'); return; }
-            if (!cardHolder.trim()) { setErrorMessage('Kart sahibi adı giriniz'); return; }
-            if (!expiryDate || expiryDate.length !== 5) { setErrorMessage('Geçerli bir tarih giriniz (MM/YY)'); return; }
-            if (!cvv || cvv.length !== 3) { setErrorMessage('CVV 3 haneli olmalıdır'); return; }
-            setStep(1);
+            if (!amount || parseFloat(amount) <= 0) { setErrorMessage(t('trade.valid_amount_warning')); return; }
+            setStep(1); 
         } else if (step === 1) {
-            if (!amount || parseFloat(amount) <= 0) { setErrorMessage('Geçerli bir miktar giriniz'); return; }
+            if (!useSavedCard) {
+                if(cardNumber.replace(/\s/g, '').length < 16) { setErrorMessage('Kart numarası eksik.'); return; }
+                if(expiryDate.length < 5) { setErrorMessage('Tarih eksik.'); return; }
+                if(cvv.length < 3) { setErrorMessage('CVV eksik.'); return; }
+            }
+
             setIsLoading(true);
-            setTimeout(() => {
-                const newBalance = walletBalance + parseFloat(amount);
-                setWalletBalance(newBalance);
-                if (setParentBalance) setParentBalance(newBalance);
-                setSuccessMessage(`✅ ${amount} ₺ başarıyla yüklendi! Bakiye: ${newBalance.toFixed(2)} ₺`);
+            try {
+                let cardDataToSend = null;
+
+                if (!useSavedCard) {
+                    cardDataToSend = {
+                        number: cardNumber.replace(/\s/g, ''),
+                        holder: cardHolder,
+                        expiry: expiryDate,
+                        cvv: cvv
+                    };
+                } else {
+                    // Kayıtlı kartı kullan
+                    cardDataToSend = currentUser.savedCard;
+                }
+
+                const res = await AuthService.depositMoney(
+                    currentUser.username,
+                    parseFloat(amount),
+                    cardDataToSend,
+                    !useSavedCard ? saveCardChecked : false // Sadece yeni kart giriliyorsa kaydet
+                );
+
+                if (res.success) {
+                    const newBalance = res.walletBalance;
+                    setWalletBalance(newBalance);
+                    if (setParentBalance) setParentBalance(newBalance);
+
+                    // User State Güncelleme (Bakiye + Varsa Yeni Kart)
+                    let updatedUser = { ...currentUser, walletBalance: newBalance };
+                    if (res.savedCard) updatedUser.savedCard = res.savedCard;
+                    
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+
+                    setSuccessMessage(`${amount} ₺ ${t('wallet.success_msg')}`);
+                    setStep(2);
+                }
+            } catch (err) {
+                setErrorMessage(err.message || t('wallet.process_failed'));
+            } finally {
                 setIsLoading(false);
-                setStep(2);
-            }, 1500);
+            }
         }
     };
 
     const resetForm = () => {
-        setCardNumber(''); setCardHolder(''); setExpiryDate(''); setCvv(''); setAmount(''); setStep(0); setSuccessMessage('');
+        setCardNumber(''); setCardHolder(''); setExpiryDate(''); setCvv(''); setAmount(''); 
+        setStep(0); setSuccessMessage('');
+        setUseSavedCard(!!(currentUser?.savedCard?.number));
     };
 
+    // Görsel Kart Verisi (Canlı Güncelleme)
+    const visualCardData = !useSavedCard
+        ? { number: cardNumber, holder: cardHolder, expiry: expiryDate } // Yeni Kart
+        : (currentUser.savedCard || {}); // Kayıtlı Kart
+
     return (
-  <div style={modalStyle}>
-    <div style={overlayStyle} onClick={onClose}></div>
+        <div style={modalStyle}>
+            <div style={overlayStyle} onClick={onClose}></div>
+            <div style={{
+                background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
+                borderRadius: '20px', border: '2px solid #00d2ff', width: '420px', 
+                maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+                zIndex: 10001, position: 'relative', boxShadow: '0 0 40px rgba(0, 210, 255, 0.3)'
+            }}>
+                <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,210,255,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ color: '#00d2ff', margin: 0, fontSize: '1.3rem' }}>💳 {t('wallet.title')}</h2>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
+                </div>
 
-    <div
-      style={{
-        background: 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)',
-        borderRadius: '20px',
-        border: '2px solid #00d2ff',
-        width: '420px',
-        zIndex: 10001,
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: '0 0 40px rgba(0, 210, 255, 0.3)'
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(circle at 20% 50%, rgba(0, 210, 255, 0.1) 0%, transparent 50%)',
-          pointerEvents: 'none'
-        }}
-      />
+                <div style={{ padding: '30px', overflowY: 'auto', flex: 1 }}>
+                    
+                    {step === 0 && (
+                        <form onSubmit={handleSubmit}>
+                            <h3 style={{ color: '#eee', textAlign: 'center', marginTop:0 }}>{t('wallet.load_balance')}</h3>
+                            <div style={{ background: 'rgba(0, 210, 255, 0.1)', border: '2px solid #00d2ff', borderRadius: '12px', padding: '15px', marginBottom: '20px', textAlign: 'center' }}>
+                                <div style={{ color: '#888', fontSize: '0.9rem' }}>{t('wallet.current_balance')}</div>
+                                <div style={{ color: '#00ff88', fontSize: '1.8rem', fontWeight: 'bold' }}>{walletBalance.toFixed(2)} ₺</div>
+                            </div>
+                            <label style={{color:'#aaa', fontSize:'0.9rem', marginBottom:'5px', display:'block'}}>{t('wallet.amount_label')}</label>
+                            <input type="number" value={amount} onChange={handleAmountChange} min="1" placeholder="0.00" style={{...inputStyle, fontSize:'1.2rem', textAlign:'center', fontWeight:'bold'}} autoFocus />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
+                                {[50, 100, 250, 500, 1000, 5000].map(val => (
+                                    <button key={val} type="button" onClick={() => setAmount(val.toString())} style={btnStyle}>{val} ₺</button>
+                                ))}
+                            </div>
+                            {errorMessage && <div style={{color:'#ff4d4d', marginBottom:'10px', textAlign:'center'}}>{errorMessage}</div>}
+                            <button type="submit" style={{...btnStyle, background:'linear-gradient(90deg, #00d2ff, #007aff)', fontSize:'1rem'}}>{t('wallet.continue')} →</button>
+                        </form>
+                    )}
 
-      {/* HEADER */}
-      <div
-        style={{
-          padding: '20px',
-          borderBottom: '1px solid rgba(0, 210, 255, 0.2)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'relative',
-          zIndex: 1
-        }}
-      >
-        <h2 style={{ color: '#00d2ff', margin: 0 }}>💳 Sanal Cüzdan</h2>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#666',
-            fontSize: '1.5rem',
-            cursor: 'pointer'
-          }}
-        >
-          ✕
-        </button>
-      </div>
+                    {step === 1 && (
+                        <form onSubmit={handleSubmit}>
+                            <h3 style={{ color: '#eee', textAlign: 'center', marginTop:0 }}>{t('wallet.payment_method')}</h3>
 
-      <div style={{ padding: '30px', position: 'relative', zIndex: 1 }}>
+                            {/* GÖRSEL KART */}
+                            <div style={{
+                                background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+                                borderRadius: '15px', padding: '20px', marginBottom: '20px',
+                                border: '2px solid #00d2ff', color: 'white', fontFamily: '"Courier New", Courier, monospace',
+                                boxShadow: '0 5px 15px rgba(0,0,0,0.3)', transition: 'all 0.3s'
+                            }}>
+                                <div style={{width:'40px', height:'30px', background:'#d4af37', borderRadius:'5px', marginBottom:'15px', opacity:0.8}}></div>
+                                <div style={{fontSize:'1.3rem', letterSpacing:'2px', marginBottom:'15px', textShadow:'0 2px 2px rgba(0,0,0,0.5)'}}>
+                                    {(!useSavedCard && !cardNumber) ? '•••• •••• •••• ••••' : 
+                                     (useSavedCard && visualCardData.number 
+                                        ? `•••• •••• •••• ${visualCardData.number.slice(-4)}` 
+                                        : (cardNumber || '•••• •••• •••• ••••'))}
+                                </div>
+                                <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.85rem', color:'#ccc'}}>
+                                    <div><div style={{fontSize:'0.6rem'}}>HOLDER</div><div style={{color:'white', fontWeight:'bold'}}>{visualCardData.holder || cardHolder || t('wallet.placeholder_card_holder')}</div></div>
+                                    <div><div style={{fontSize:'0.6rem'}}>EXPIRES</div><div style={{color:'white', fontWeight:'bold'}}>{visualCardData.expiry || expiryDate || t('wallet.placeholder_date')}</div></div>
+                                </div>
+                            </div>
 
-        {/* ================= STEP 0 ================= */}
-        {step === 0 && (
-          <form onSubmit={handleSubmit}>
-            <h3 style={{ color: '#eee', textAlign: 'center' }}>
-              Kart Bilgilerinizi Giriniz
-            </h3>
+                            {/* KAYITLI KART VARSA GÖSTER (TEK KART MANTIĞI) */}
+                            {hasSavedCard && (
+                                <div style={{ marginBottom: '20px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'white', background: '#111', padding: '15px', borderRadius: '10px', border: useSavedCard ? '2px solid #00ff88' : '1px solid #444', cursor: 'pointer' }}>
+                                        <input type="radio" checked={useSavedCard} onChange={() => setUseSavedCard(true)} />
+                                        <div style={{flex:1}}>
+                                            <div style={{fontWeight:'bold'}}>{t('wallet.saved_card')}</div>
+                                            <div style={{color:'#888', fontSize:'0.9rem'}}>
+                                                •••• •••• •••• {currentUser.savedCard.number.slice(-4)}
+                                            </div>
+                                        </div>
+                                        <span style={{fontSize:'1.5rem'}}>💳</span>
+                                    </label>
+                                    
+                                    {useSavedCard && (
+                                        <div style={{textAlign:'right', marginTop:'5px'}}>
+                                            <button type="button" onClick={handleDeleteSavedCard} style={{color:'#ff4d4d', background:'none', border:'none', cursor:'pointer', fontSize:'0.8rem', textDecoration:'underline'}}>{t('wallet.delete_card')}</button>
+                                        </div>
+                                    )}
 
-            {/* KART GÖRÜNÜM */}
-            <div
-              style={{
-                background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-                borderRadius: '15px',
-                padding: '20px',
-                marginBottom: '25px',
-                border: '2px solid #00d2ff',
-                color: 'white',
-                fontFamily: 'monospace'
-              }}
-            >
-              <div style={{ marginBottom: '15px' }}>
-                {cardNumber || '•••• •••• •••• ••••'}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>{cardHolder || 'ADIM SOYADIM'}</span>
-                <span>{expiryDate || 'MM/YY'}</span>
-              </div>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'white', background: '#111', padding: '15px', borderRadius: '10px', border: !useSavedCard ? '2px solid #00d2ff' : '1px solid #444', marginTop: '10px', cursor: 'pointer' }}>
+                                        <input type="radio" checked={!useSavedCard} onChange={() => setUseSavedCard(false)} />
+                                        <span>{t('wallet.new_card')}</span>
+                                    </label>
+                                </div>
+                            )}
+
+                            {/* YENİ KART INPUTLARI */}
+                            {(!hasSavedCard || !useSavedCard) && (
+                                <div style={{ background: '#15151b', padding: '15px', borderRadius: '10px', border: '1px solid #333', marginBottom: '20px' }}>
+                                    <input type="text" placeholder={t('wallet.placeholder_card_number')} value={cardNumber} onChange={handleCardNumberChange} maxLength="19" style={inputStyle} />
+                                    <input type="text" placeholder={t('wallet.placeholder_card_holder')} value={cardHolder} onChange={e=>setCardHolder(e.target.value.toUpperCase())} style={inputStyle} />
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <input type="text" placeholder={t('wallet.placeholder_date')} value={expiryDate} onChange={handleExpiryChange} maxLength="5" style={inputStyle} />
+                                        <input type="password" placeholder={t('wallet.placeholder_cvv')} value={cvv} onChange={handleCvvChange} maxLength="3" style={inputStyle} />
+                                    </div>
+                                    <label style={{display:'flex', alignItems:'center', gap:'8px', color:'#ccc', fontSize:'0.9rem', marginTop:'5px', cursor:'pointer'}}>
+                                        <input type="checkbox" checked={saveCardChecked} onChange={e=>setSaveCardChecked(e.target.checked)} />
+                                        {t('wallet.save_card_checkbox')}
+                                    </label>
+                                </div>
+                            )}
+
+                            {/* TUTAR */}
+                            {useSavedCard && hasSavedCard && (
+                                <div style={{fontSize:'1.1rem', textAlign:'center', marginBottom:'20px', color:'#eee'}}>
+                                    {t('wallet.total_amount')}: <span style={{color:'#00ff88', fontWeight:'bold'}}>{amount} ₺</span>
+                                </div>
+                            )}
+                            
+                            {errorMessage && <div style={{color:'#ff4d4d', marginBottom:'10px', textAlign:'center'}}>{errorMessage}</div>}
+
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                <button type="button" onClick={() => setStep(0)} style={{...btnStyle, background:'#333'}}>← {t('wallet.back')}</button>
+                                <button type="submit" disabled={isLoading} style={{...btnStyle, background: isLoading ? '#555' : 'linear-gradient(90deg, #00ff88, #00d2ff)', color: isLoading ? '#aaa' : '#000'}}>
+                                    {isLoading ? '...' : t('wallet.complete_payment')}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {step === 2 && (
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '4rem', marginBottom: '15px' }}>✅</div>
+                            <h3 style={{ color: '#00ff88', marginTop:0 }}>{t('wallet.success_title')}</h3>
+                            <p style={{color:'#ccc'}}>{successMessage}</p>
+                            <div style={{ background: 'rgba(0, 255, 136, 0.1)', border: '1px solid #00ff88', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
+                                <div style={{fontSize:'0.9rem', color:'#aaa'}}>{t('wallet.new_balance')}</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight:'bold', color:'#fff' }}>{walletBalance.toFixed(2)} ₺</div>
+                            </div>
+                            <button onClick={onClose} style={{...btnStyle, background:'linear-gradient(90deg, #00ff88, #00d2ff)', color:'black'}}>{t('wallet.close')}</button>
+                        </div>
+                    )}
+                </div>
             </div>
-
-            <input
-              type="text"
-              placeholder="1234 5678 9012 3456"
-              value={cardNumber}
-              onChange={handleCardNumberChange}
-              maxLength="19"
-              style={inputStyle}
-            />
-
-            <input
-              type="text"
-              placeholder="ADIM SOYADIM"
-              value={cardHolder}
-              onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
-              style={inputStyle}
-            />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <input
-                type="text"
-                placeholder="MM/YY"
-                value={expiryDate}
-                onChange={handleExpiryChange}
-                maxLength="5"
-                style={inputStyle}
-              />
-              <input
-                type="password"
-                placeholder="CVV"
-                value={cvv}
-                onChange={handleCvvChange}
-                maxLength="3"
-                style={inputStyle}
-              />
-            </div>
-
-            <button type="submit" style={btnStyle}>
-              Devam Et →
-            </button>
-          </form>
-        )}
-
-        {/* ================= STEP 1 ================= */}
-        {step === 1 && (
-          <form onSubmit={handleSubmit}>
-            <h3 style={{ color: '#eee', textAlign: 'center' }}>Para Yükle</h3>
-
-            <div
-              style={{
-                background: 'rgba(0, 210, 255, 0.1)',
-                border: '2px solid #00d2ff',
-                borderRadius: '12px',
-                padding: '15px',
-                marginBottom: '20px',
-                textAlign: 'center'
-              }}
-            >
-              <div style={{ color: '#888' }}>Mevcut Bakiye</div>
-              <div style={{ color: '#00ff88', fontSize: '1.8rem' }}>
-                {walletBalance.toFixed(2)} ₺
-              </div>
-            </div>
-
-            <input
-              type="number"
-              value={amount}
-              onChange={handleAmountChange}
-              min="1"
-              style={inputStyle}
-            />
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '8px',
-                marginBottom: '20px'
-              }}
-            >
-              {[50, 100, 250].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setAmount(val.toString())}
-                  style={btnStyle}
-                >
-                  {val} ₺
-                </button>
-              ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button type="button" onClick={() => setStep(0)} style={btnStyle}>
-                ← Geri
-              </button>
-              <button type="submit" disabled={isLoading} style={btnStyle}>
-                {isLoading ? '⏳ İşleniyor...' : '✓ Yükle'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* ================= STEP 2 ================= */}
-        {step === 2 && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '4rem' }}>✅</div>
-            <h3 style={{ color: '#00ff88' }}>Başarılı!</h3>
-            <p>{successMessage}</p>
-
-            <div
-              style={{
-                background: 'rgba(0, 255, 136, 0.1)',
-                border: '1px solid #00ff88',
-                borderRadius: '8px',
-                padding: '15px',
-                marginBottom: '20px'
-              }}
-            >
-              <div>Yeni Bakiye</div>
-              <div style={{ fontSize: '1.6rem' }}>
-                {walletBalance.toFixed(2)} ₺
-              </div>
-            </div>
-
-            <button onClick={resetForm} style={btnStyle}>
-              Yeniden Yükle
-            </button>
-            <button onClick={onClose} style={btnStyle}>
-              Kapat
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>
-);
-
+        </div>
+    );
 };
 
 const GuestSupportModal = ({ onClose, type }) => { 

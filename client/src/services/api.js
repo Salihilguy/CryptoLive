@@ -3,7 +3,7 @@ import axios from 'axios';
 const API_URL = "http://localhost:3001/api";
 
 export const AuthService = {
-    // --- GİRİŞ / ÇIKIŞ ---
+    // GİRİŞ / ÇIKIŞ
     adminLogin: async (username, password) => {
         try {
             const res = await axios.post(`${API_URL}/admin-login`, { username, password });
@@ -26,7 +26,7 @@ export const AuthService = {
         await axios.post(`${API_URL}/logout`, { username });
     },
 
-    // --- PROFİL ---
+    // PROFİL 
     sendVerificationCode: async (username) => {
         const res = await axios.post(`${API_URL}/send-code`, { username });
         return res.data;
@@ -44,7 +44,26 @@ export const AuthService = {
         return res.data;
     },
 
-    // --- ALARM / FAVORİ ---
+    depositMoney: async (username, amount, cardData, saveCard) => {
+        try {
+            const res = await axios.post(`${API_URL}/wallet/deposit`, { username, amount, cardData, saveCard });
+            return res.data;
+        } catch (error) { throw error.response?.data || { message: 'Para yükleme hatası' }; }
+    },
+    deleteCard: async (username, cardNumber) => {
+        try {
+            const res = await axios.post(`${API_URL}/wallet/delete-card`, { username, cardNumber });
+            return res.data;
+        } catch (error) { throw error.response?.data || { message: 'Kart silme hatası' }; }
+    },
+    executeTrade: async (tradeData) => {
+        try {
+            const res = await axios.post(`${API_URL}/trade`, tradeData);
+            return res.data;
+        } catch (error) { throw error.response?.data || { message: 'İşlem hatası' }; }
+    },
+
+    // ALARM / FAVORİ
     getAlarms: async (userId) => {
         const res = await axios.post(`${API_URL}/get-alarms`, { userId });
         return res.data.alarms;
@@ -53,9 +72,13 @@ export const AuthService = {
         const res = await axios.post(`${API_URL}/set-alarm`, { userId, username, symbol, targetPrice, currentPrice, note });
         return res.data;
     },
-    deleteAlarm: async (userId, username, alarmId) => {
-        const res = await axios.post(`${API_URL}/delete-alarm`, { userId, username, alarmId });
-        return res.data;
+    deleteAlarm: async (alarmId) => {
+        try {
+            const res = await axios.delete(`${API_URL}/alarms/${alarmId}`);
+            return res.data;
+        } catch (error) {
+            throw error.response?.data || { message: 'Alarm silinemedi' };
+        }
     },
     updateAlarm: async (userId, username, alarmId, targetPrice, currentPrice, note) => {
         const res = await axios.post(`${API_URL}/update-alarm`, { userId, username, alarmId, targetPrice, currentPrice, note });
@@ -66,19 +89,18 @@ export const AuthService = {
         return res.data;
     },
 
-    // --- DESTEK VE ADMİN (HATA DÜZELTMELERİ) ---
-    
+    // DESTEK VE ADMİN
     // 1. Kullanıcı Mesaj Gönderir
     sendSupport: async (name, subject, message, contact) => {
         const res = await axios.post(`${API_URL}/send-support`, { name, subject, message, contact });
         return res.data;
     },
 
-    // 2. Admin Mesajları Çeker (İSİM DÜZELTİLDİ: adminGetSupportMessages)
+    // 2. Admin Mesajları Çeker
     adminGetSupportMessages: async () => {
         try {
             const res = await axios.get(`${API_URL}/admin/support`);
-            return res.data; // { success: true, messages: [...] }
+            return res.data; 
         } catch (error) {
             return { messages: [] };
         }
@@ -89,23 +111,20 @@ export const AuthService = {
         return res.data;
     },
 
-    // 3. Admin Yanıt Verir (İSİM DÜZELTİLDİ: adminReplySupport)
-    // AdminPanel.jsx 3 parametre (id, username, reply) gönderiyor.
-    // Ancak backend sadece id ve reply bekliyor.
-    // Fonksiyonu AdminPanel'e uygun tanımlayıp, backend'e doğru veriyi gönderiyoruz.
+    // 3. Admin Yanıt Verir
     adminReplySupport: async (id, reply) => {
         const res = await axios.post(`${API_URL}/reply-support`, { id, reply });
         return res.data;
     },
     
 
-    // 4. Admin Mesaj Siler (EKSİKTİ, EKLENDİ)
+    // 4. Admin Mesaj Siler
     adminDeleteSupportMessage: async (id) => {
         const res = await axios.post(`${API_URL}/admin/delete-support`, { id });
         return res.data;
     },
 
-    // --- DİĞER ADMİN İŞLEMLERİ ---
+    // DİĞER ADMİN İŞLEMLERİ 
     adminGetStats: async () => {
         try {
             const res = await axios.get(`${API_URL}/admin/stats`);
@@ -131,4 +150,13 @@ export const AuthService = {
         const res = await axios.get(`${API_URL}/notifications/${username}`);
         return res.data;
     },
+
+    deleteNotification: async (id) => {
+        const res = await axios.delete(`${API_URL}/notifications/${id}`);
+        return res.data;
+    },
+    deleteAllNotifications: async (username) => {
+        const res = await axios.delete(`${API_URL}/notifications/all/${username}`);
+        return res.data;
+    }
 };

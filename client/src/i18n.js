@@ -17,11 +17,58 @@ const resources = {
         alarms: "Alarmlarım",
         portfolio: "Varlıklarım"
       },
+      wallet: {
+        login_required_title: "Giriş Gerekli",
+        login_required_desc: "Sanal cüzdana erişmek için lütfen giriş yapınız.",
+        close: "Kapat",
+        title: "Sanal Cüzdan",
+        load_balance: "Bakiye Yükle",
+        current_balance: "Mevcut Bakiye",
+        amount_label: "Yüklenecek Miktar (TL)",
+        payment_method: "Ödeme Yöntemi",
+        saved_card: "Kayıtlı Kart",
+        new_card: "Yeni Kart Gir",
+        delete_card: "Bu kartı sil",
+        save_card_checkbox: "Kart bilgilerimi sakla (Eskisi varsa silinir).",
+        total_amount: "Toplam Tutar",
+        back: "Geri",
+        complete_payment: "Ödemeyi Tamamla",
+        success_title: "Başarılı!",
+        success_msg: "başarıyla yüklendi!",
+        new_balance: "Yeni Bakiye",
+        card_deleted: "Kart bilgileri silindi.",
+        process_failed: "İşlem başarısız.",
+        continue: "Devam Et",
+        placeholder_card_number: "0000 0000 0000 0000",
+        placeholder_card_holder: "AD SOYAD",
+        placeholder_date: "AA/YY",
+        placeholder_cvv: "CVV"
+      },
+      portfolio: {
+        title: "Varlıklarım",
+        total_asset_value: "Toplam Varlık Değeri",
+        wallet_balance: "Cüzdan Bakiyesi (TL)",
+        distribution: "Varlık Dağılımı",
+        asset: "Varlık",
+        amount: "Miktar",
+        value: "Değer",
+        cash_label: "Nakit (TL)",
+        empty: "Henüz portföyünüzde varlık bulunmuyor."
+      },
       table: {
         instrument: "Enstrüman",
         price: "Fiyat",
         change: "24s",
-        market_cap: "Piyasa Değ."
+        change: "Değişim",
+        market_cap: "Piyasa Değ.",
+        trade_button: "⇄ AL / SAT",
+        target_price: "Hedef Fiyat",
+        change_24h: "24S",
+        change_1w: "1H",
+        change_1m: "1A",
+        change_3m: "3A",
+        change_1y: "1Y",
+        change_5y: "5Y"
       },
       auth: {
         login_title: "Giriş Yap",
@@ -50,7 +97,8 @@ const resources = {
         clear: "Temizle",
         empty: "Hiç bildirim yok.",
         you: "Siz",
-        team: "CryptoLive Ekibi"
+        team: "CryptoLive Ekibi",
+        cleared: "Tüm bildirimler temizlendi."
       },
       alarms_table: {
         title: "Aktif Alarmlar",
@@ -60,11 +108,13 @@ const resources = {
         condition: "Koşul",
         action: "İşlem",
         rise: "Yükseliş",
-        fall: "Düşüş"
+        fall: "Düşüş",
+        target_price: "Hedef Fiyat"
       },
       alarm_modal: {
         title_create: "Yeni Alarm Kur",
         title_edit: "Alarmı Düzenle",
+        no_alarm: "Alarm bulunamadı.",
         target_price: "Hedef Fiyat",
         current_price: "Güncel",
         note_placeholder: "Notun (Opsiyonel)",
@@ -74,13 +124,47 @@ const resources = {
         condition_fall_desc: "(Hedef ≤ Güncel)",
         btn_cancel: "İptal",
         btn_create: "KUR",
-        btn_update: "GÜNCELLE"
+        btn_update: "GÜNCELLE",
+        btn_delete: "Sil"
       },
       notifications: {
         alarm_created: "Alarm başarıyla kuruldu!",
         alarm_updated: "Alarm güncellendi!",
         alarm_deleted: "Alarm silindi.",
         process_failed: "İşlem başarısız."
+      },
+      trade: {
+        title: "İşlem Yap",
+        buy: "AL",
+        sell: "SAT",
+        wallet_balance: "Cüzdan Bakiyesi",
+        owned: "Sahip Olunan",
+        current_price: "Güncel Fiyat",
+        amount: "Miktar",
+        total: "Tutar",
+        transaction_total: "İşlem Tutarı",
+        buy_action: "AL",
+        sell_action: "SAT",
+        success_buy: "Başarılı! {{amount}} adet {{symbol}} alındı.",
+        success_sell: "Başarılı! {{amount}} adet {{symbol}} satıldı.",
+        insufficient_balance: "Yetersiz Bakiye!",
+        insufficient_asset: "Yetersiz {{symbol}} bakiyesi!",
+        valid_amount_warning: "Geçerli bir miktar girin.",
+        rate_source: "Kur Kaynağı"
+      },
+      status: {
+        success: "Başarılı",
+        error: "Hata",
+        info: "Bilgi",
+        warning: "Uyarı",
+        default_title: "Bildirim"
+      },
+      messages: {
+        wallet_deposit_success: "{{amount}} TL başarıyla yüklendi.",
+        trade_buy_success: "{{amount}} adet {{symbol}} alındı.",
+        trade_sell_success: "{{amount}} adet {{symbol}} satıldı.",
+        alarm_triggered: "{{symbol}} hedefine ulaştı: {{price}}",
+        card_deleted: "Kart bilgileri silindi."
       },
       support: {
         title_login: "Giriş Sorunu",
@@ -98,7 +182,7 @@ const resources = {
         type_technical: "Teknik Sorun",
         send: "Gönder",
         close: "Kapat",
-        success: "Mesaj başarıyla gönderildi!", // DÜZELTİLDİ
+        success: "Mesaj başarıyla gönderildi!", 
         reply_title: "Destek Yanıtı"
       },
       assets: {
@@ -165,11 +249,57 @@ const resources = {
         alarms: "My Alarms",
         portfolio: "Portfolio"
       },
+      wallet: {
+        login_required_title: "Login Required",
+        login_required_desc: "Please login to access the virtual wallet.",
+        close: "Close",
+        title: "Virtual Wallet",
+        load_balance: "Deposit Funds",
+        current_balance: "Current Balance",
+        amount_label: "Amount to Deposit (TRY)",
+        payment_method: "Payment Method",
+        saved_card: "Saved Card",
+        new_card: "Enter New Card",
+        delete_card: "Delete this card",
+        save_card_checkbox: "Save my card details (Replaces old one).",
+        total_amount: "Total Amount",
+        back: "Back",
+        complete_payment: "Complete Payment",
+        success_title: "Success!",
+        success_msg: "successfully deposited!",
+        new_balance: "New Balance",
+        card_deleted: "Card details deleted.",
+        process_failed: "Transaction failed.",
+        continue: "Continue",
+        placeholder_card_number: "0000 0000 0000 0000",
+        placeholder_card_holder: "FULL NAME",
+        placeholder_date: "MM/YY",
+        placeholder_cvv: "CVV"
+      },
+      portfolio: {
+        title: "My Assets",
+        total_asset_value: "Total Asset Value",
+        wallet_balance: "Wallet Balance (TRY)",
+        distribution: "Asset Distribution",
+        asset: "Asset",
+        amount: "Amount",
+        value: "Value",
+        cash_label: "Cash (TRY)",
+        empty: "No assets in your portfolio yet."
+      },
       table: {
         instrument: "Instrument",
         price: "Price",
-        change: "24h",
-        market_cap: "Mkt Cap"
+        change: "Change",
+        market_cap: "Market Cap",
+        trade_button: "⇄ BUY / SELL",
+        target_price: "Target Price",
+        change_24h: "24H",
+        change_1w: "1W",
+        change_1m: "1M",
+        change_3m: "3M",
+        change_1y: "1Y",
+        change_5y: "5Y"
       },
       auth: {
         login_title: "Sign In",
@@ -198,7 +328,8 @@ const resources = {
         clear: "Clear",
         empty: "No notifications yet.",
         you: "You",
-        team: "CryptoLive Team"
+        team: "CryptoLive Team",
+        cleared: "All notifications cleared."
       },
       alarms_table: {
         title: "Active Alarms",
@@ -208,11 +339,13 @@ const resources = {
         condition: "Condition",
         action: "Action",
         rise: "Rise",
-        fall: "Fall"
+        fall: "Fall",
+        target_price: "Target Price"
       },
       alarm_modal: {
         title_create: "Create New Alarm",
         title_edit: "Edit Alarm",
+        no_alarm: "No alarms found.",
         target_price: "Target Price",
         current_price: "Current",
         note_placeholder: "Note (Optional)",
@@ -222,13 +355,48 @@ const resources = {
         condition_fall_desc: "(Target ≤ Current)",
         btn_cancel: "Cancel",
         btn_create: "CREATE",
-        btn_update: "UPDATE"
+        btn_update: "UPDATE",
+        "btn_delete": "Delete"
       },
       notifications: {
         alarm_created: "Alarm set successfully!",
         alarm_updated: "Alarm updated successfully!",
         alarm_deleted: "Alarm deleted.",
         process_failed: "Operation failed."
+      },
+      trade: {
+        title: "Trade",
+        buy: "BUY",
+        sell: "SELL",
+        wallet_balance: "Wallet Balance",
+        owned: "Owned",
+        current_price: "Current Price",
+        amount: "Amount",
+        total: "Total",
+        transaction_total: "Transaction Total",
+        buy_action: "BUY",
+        sell_action: "SELL",
+        success_buy: "Success! Bought {{amount}} {{symbol}}.",
+        success_sell: "Success! Sold {{amount}} {{symbol}}.",
+        insufficient_balance: "Insufficient Balance!",
+        insufficient_asset: "Insufficient {{symbol}} balance!",
+        valid_amount_warning: "Please enter a valid amount.",
+        rate_source: "Rate Source"
+      },
+      status: {
+        Başarılı: "Success",
+        success: "Success",
+        error: "Error",
+        info: "Info",
+        warning: "Warning",
+        default_title: "Notification"
+      },
+      messages: {
+        wallet_deposit_success: "Successfully deposited {{amount}} TL.",
+        trade_buy_success: "Bought {{amount}} {{symbol}}.",
+        trade_sell_success: "Sold {{amount}} {{symbol}}.",
+        alarm_triggered: "{{symbol}} hit target: {{price}}",
+        card_deleted: "Card details deleted."
       },
       support: {
         title_login: "Login Issue",
@@ -246,7 +414,7 @@ const resources = {
         type_technical: "Technical Issue",
         send: "Send",
         close: "Close",
-        success: "Message sent successfully!", // DÜZELTİLDİ
+        success: "Message sent successfully!", 
         reply_title: "Support Reply"
       },
       assets: {
